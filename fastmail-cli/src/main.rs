@@ -278,19 +278,32 @@ async fn handle_masked(cmd: MaskedCommands) -> Result<()> {
 
 async fn handle_config(cmd: ConfigCommands) -> Result<()> {
     match cmd {
-        ConfigCommands::AllowRecipient(cmd) => match cmd {
+        ConfigCommands::AllowRecipient(allow) => match allow {
             AllowRecipientCommands::Add { email } => {
-                let resp = Response::ok(serde_json::json!({"email": email, "added": true}));
+                let mut whitelist = fastmail_client::Whitelist::load()?;
+                whitelist.add(email.clone())?;
+                let resp = Response::ok(serde_json::json!({
+                    "email": email,
+                    "added": true
+                }));
                 print_response(&resp)?;
                 Ok(())
             }
             AllowRecipientCommands::List => {
-                let resp = Response::ok(vec![String::new()]); // Placeholder - will be filled in Task 13
+                let whitelist = fastmail_client::Whitelist::load()?;
+                let resp = Response::ok(serde_json::json!({
+                    "allowed_recipients": whitelist.list()
+                }));
                 print_response(&resp)?;
                 Ok(())
             }
             AllowRecipientCommands::Remove { email } => {
-                let resp = Response::ok(serde_json::json!({"email": email, "removed": true}));
+                let mut whitelist = fastmail_client::Whitelist::load()?;
+                whitelist.remove(&email)?;
+                let resp = Response::ok(serde_json::json!({
+                    "email": email,
+                    "removed": true
+                }));
                 print_response(&resp)?;
                 Ok(())
             }
