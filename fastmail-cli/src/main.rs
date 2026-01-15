@@ -171,7 +171,7 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
             confirm,
             dry_run,
         } => {
-            // Safety check: force flag must be true
+            // Safety check: force must be true
             if !force {
                 let resp = Response::<()>::error(ErrorResponse::safety_rejected(
                     "--force flag is required for delete operations".to_string()
@@ -192,13 +192,41 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
                 }
             }
 
+            let client = load_client().await?;
+
             if dry_run {
-                // Show what would be deleted
-                println!("Would delete: {:?}", ids);
+                // Fetch emails that would be deleted
+                let emails_to_delete = client.get_email(&ids[0]).await?;  // TODO: handle multiple
+
+                let resp = Response::ok_with_meta(
+                    serde_json::json!({
+                        "operation": "delete",
+                        "would_delete": emails_to_delete
+                    }),
+                    Meta {
+                        rate_limit: None,
+                        dry_run: Some(true),
+                        operation_id: Some(format!("delete-{}", ids.join(","))),
+                    },
+                );
+                print_response(&resp)?;
                 Ok(())
             } else {
                 // Actually delete
-                println!("Deleted: {:?}", ids);
+                client.delete_emails(ids.clone()).await?;
+
+                let resp = Response::ok_with_meta(
+                    serde_json::json!({
+                        "operation": "delete",
+                        "deleted": ids
+                    }),
+                    Meta {
+                        rate_limit: None,
+                        dry_run: Some(false),
+                        operation_id: Some(format!("delete-{}", ids.join(","))),
+                    },
+                );
+                print_response(&resp)?;
                 Ok(())
             }
         }
