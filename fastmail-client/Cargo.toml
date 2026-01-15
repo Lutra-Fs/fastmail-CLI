@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+directories = "5.0"
 jmap-client = { path = "../jmap-client" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = "0.8"
