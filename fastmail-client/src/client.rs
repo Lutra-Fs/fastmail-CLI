@@ -1,6 +1,6 @@
 // fastmail-client/src/client.rs
 use anyhow::{anyhow, Result};
-use jmap_client::{HttpClient, JmapClient, ReqwestClient, Session, Email};
+use jmap_client::{HttpClient, JmapClient, ReqwestClient, Session, Email, MaskedEmail, MaskedEmailState};
 
 const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
 
@@ -73,6 +73,29 @@ impl FastmailClient {
 
     pub async fn delete_emails(&self, ids: Vec<String>) -> Result<()> {
         self.inner.email_delete(&ids).await
+    }
+
+    pub async fn list_masked_emails(&self) -> Result<Vec<MaskedEmail>> {
+        self.inner.masked_email_get_all().await
+    }
+
+    pub async fn create_masked_email(
+        &self,
+        for_domain: &str,
+        description: &str,
+        email_prefix: Option<&str>,
+    ) -> Result<MaskedEmail> {
+        self.inner
+            .masked_email_create(for_domain, description, email_prefix)
+            .await
+    }
+
+    pub async fn set_masked_email_state(
+        &self,
+        id: &str,
+        state: MaskedEmailState,
+    ) -> Result<()> {
+        self.inner.masked_email_set_state(id, state).await
     }
 }
 

@@ -2,7 +2,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use fastmail_client::FastmailClient;
+use fastmail_client::{FastmailClient, MaskedEmailState};
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
 use std::env;
 
@@ -202,22 +202,75 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
 }
 
 async fn handle_masked(cmd: MaskedCommands) -> Result<()> {
+    let client = load_client().await?;
+
     match cmd {
-        MaskedCommands::List { filter: _, state: _ } => {
-            let resp: Response<Vec<String>> = Response::ok(vec![]);
+        MaskedCommands::List { filter, state } => {
+            let mut emails = client.list_masked_emails().await?;
+
+            // Apply filters
+            if let Some(domain) = filter {
+                emails.retain(|e| e.for_domain == domain);
+            }
+            if let Some(state_str) = state {
+                let state = match state_str.as_str() {
+                    "pending" => MaskedEmailState::Pending,
+                    "enabled" => MaskedEmailState::Enabled,
+                    "disabled" => MaskedEmailState::Disabled,
+                    "deleted" => MaskedEmailState::Deleted,
+                    _ => return Err(anyhow::anyhow!("Invalid state: {}", state_str)),
+                };
+                emails.retain(|e| e.state == state);
+            }
+
+            let resp = Response::ok(emails);
             print_response(&resp)?;
             Ok(())
         }
-        MaskedCommands::Create { domain: _, description: _, prefix: _ } => {
+        MaskedCommands::Create {
+            domain,
+            description,
+            prefix,
+        } => {
+            let email = client
+                .create_masked_email(
+                    &domain,
+                    description.as_deref().unwrap_or(""),
+                    prefix.as_deref(),
+                )
+                .await?;
+
+            let resp = Response::ok(email);
+            print_response(&resp)?;
             Ok(())
         }
-        MaskedCommands::Enable { id: _ } => {
+        MaskedCommands::Enable { id } => {
+            client
+                .set_masked_email_state(&id, MaskedEmailState::Enabled)
+                .await?;
+            let resp = Response::ok(serde_json::json!({"id": id, "state": "enabled"}));
+            print_response(&resp)?;
             Ok(())
         }
-        MaskedCommands::Disable { id: _ } => {
+        MaskedCommands::Disable { id } => {
+            client
+                .set_masked_email_state(&id, MaskedEmailState::Disabled)
+                .await?;
+            let resp = Response::ok(serde_json::json!({"id": id, "state": "disabled"}));
+            print_response(&resp)?;
             Ok(())
         }
-        MaskedCommands::Delete { id: _, force: _ } => {
+        MaskedCommands::Delete { id, force } => {
+            if !force {
+                let resp = Response::<()>::error(ErrorResponse::safety_rejected(
+                    "--force flag is required for delete operations".to_string()
+                ));
+                print_response(&resp)?;
+                std::process::exit(ExitCode::SafetyRejected.code());
+            }
+            client.set_masked_email_state(&id, MaskedEmailState::Deleted).await?;
+            let resp = Response::ok(serde_json::json!({"id": id, "state": "deleted"}));
+            print_response(&resp)?;
             Ok(())
         }
     }
