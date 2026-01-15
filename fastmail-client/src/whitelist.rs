@@ -3,8 +3,10 @@ use anyhow::{anyhow, Result};
 use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Whitelist {
     pub allowed_recipients: Vec<String>,
 }
@@ -21,6 +23,7 @@ impl Whitelist {
             fs::create_dir_all(&config_dir)?;
             let default = Self::default();
             fs::write(&whitelist_path, serde_json::to_vec_pretty(&default)?)?;
+            set_owner_only_permissions(&whitelist_path)?;
             return Ok(default);
         }
 
@@ -60,22 +63,20 @@ impl Whitelist {
         let content = serde_json::to_string_pretty(self)?;
         fs::write(&whitelist_path, content)?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&whitelist_path)?.permissions();
-            perms.set_mode(0o600);
-            fs::set_permissions(&whitelist_path, perms)?;
-        }
+        set_owner_only_permissions(&whitelist_path)?;
 
         Ok(())
     }
 }
 
-impl Default for Whitelist {
-    fn default() -> Self {
-        Self {
-            allowed_recipients: Vec::new(),
-        }
+fn set_owner_only_permissions(path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(path)?.permissions();
+        perms.set_mode(0o600);
+        fs::set_permissions(path, perms)?;
     }
+    Ok(())
 }
+

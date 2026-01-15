@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize, Serialize)]
+#[derive(Default)]
 pub struct Config {
     #[serde(default)]
     account: AccountConfig,
@@ -94,11 +95,3 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            account: AccountConfig::default(),
-            safety: SafetyConfig::default(),
-        }
-    }
-}

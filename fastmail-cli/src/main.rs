@@ -8,11 +8,9 @@ use std::env;
 
 async fn load_client() -> Result<FastmailClient> {
     let token = env::var("FASTMAIL_TOKEN")
-        .or_else(|_| -> Result<String> {
-            Err(anyhow::anyhow!(
-                "FASTMAIL_TOKEN environment variable not set"
-            ))
-        })?;
+        .map_err(|_| anyhow::anyhow!(
+            "FASTMAIL_TOKEN environment variable not set"
+        ))?;
 
     FastmailClient::new(token).await
 }
@@ -142,7 +140,15 @@ async fn main() -> Result<()> {
 
 async fn handle_mail(cmd: MailCommands) -> Result<()> {
     match cmd {
-        MailCommands::List { mailbox: _, limit } => {
+        MailCommands::List { mailbox, limit } => {
+            if let Some(mailbox) = mailbox {
+                let resp = Response::<()>::error(ErrorResponse::validation_failed(format!(
+                    "Mailbox filtering not supported yet: {}",
+                    mailbox
+                )));
+                print_response(&resp)?;
+                std::process::exit(ExitCode::PermanentError.code());
+            }
             let client = load_client().await?;
             let emails = client.list_emails(limit).await?;
 
@@ -196,7 +202,10 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
 
             if dry_run {
                 // Fetch emails that would be deleted
-                let emails_to_delete = client.get_email(&ids[0]).await?;  // TODO: handle multiple
+                let mut emails_to_delete = Vec::with_capacity(ids.len());
+                for id in &ids {
+                    emails_to_delete.push(client.get_email(id).await?);
+                }
 
                 let resp = Response::ok_with_meta(
                     serde_json::json!({
