@@ -1,6 +1,6 @@
 // fastmail-client/src/client.rs
 use anyhow::{anyhow, Result};
-use jmap_client::{HttpClient, JmapClient, ReqwestClient, Session};
+use jmap_client::{HttpClient, JmapClient, ReqwestClient, Session, Email};
 
 const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
 
@@ -58,6 +58,21 @@ impl FastmailClient {
 
     pub fn account_email(&self) -> &str {
         &self.account_email
+    }
+
+    // Delegate to JmapClient
+
+    pub async fn list_emails(&self, limit: usize) -> Result<Vec<Email>> {
+        let ids = self.inner.email_query(limit).await?;
+        self.inner.email_get(&ids).await
+    }
+
+    pub async fn get_email(&self, id: &str) -> Result<Email> {
+        self.inner.get_email(id).await
+    }
+
+    pub async fn delete_emails(&self, ids: Vec<String>) -> Result<()> {
+        self.inner.email_delete(&ids).await
     }
 }
 

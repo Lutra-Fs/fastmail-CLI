@@ -1,6 +1,6 @@
 // fastmail-client/src/config.rs
 use anyhow::{anyhow, Result};
-use directories::ProjectDirs;
+use directories::BaseDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -84,9 +84,9 @@ impl Config {
     }
 
     fn config_dir() -> Result<PathBuf> {
-        let proj_dirs = ProjectDirs::from("com", "FastmailCLI", "fastmail-cli")
+        let base_dirs = BaseDirs::new()
             .ok_or_else(|| anyhow!("Cannot determine config directory"))?;
-        Ok(proj_dirs.config_dir().to_path_buf())
+        Ok(base_dirs.config_dir().join("fastmail-cli"))
     }
 
     pub fn account_email(&self) -> Option<&str> {

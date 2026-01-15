@@ -95,17 +95,17 @@ impl ErrorResponse {
 #[derive(Debug, Serialize)]
 pub struct Meta {
     #[serde(skip_serializing_if = "Option::is_none")]
-    rate_limit: Option<RateLimitInfo>,
+    pub rate_limit: Option<RateLimitInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    dry_run: Option<bool>,
+    pub dry_run: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    operation_id: Option<String>,
+    pub operation_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RateLimitInfo {
-    remaining: u32,
-    reset_at: String,
+    pub remaining: u32,
+    pub reset_at: String,
 }
 
 /// Exit codes for agent decision making
