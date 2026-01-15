@@ -1,3 +1,5 @@
+mod output;
+
 use anyhow::Result;
 
 #[tokio::main]
