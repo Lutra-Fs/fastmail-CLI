@@ -1,1 +1,0 @@
-/Users/lutra/repos/fastmail-CLI/target/debug/libjmap_client.rlib: /Users/lutra/repos/fastmail-CLI/jmap-client/src/client.rs /Users/lutra/repos/fastmail-CLI/jmap-client/src/http/mod.rs /Users/lutra/repos/fastmail-CLI/jmap-client/src/http/reqwest.rs /Users/lutra/repos/fastmail-CLI/jmap-client/src/lib.rs /Users/lutra/repos/fastmail-CLI/jmap-client/src/types.rs
