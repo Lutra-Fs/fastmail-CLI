@@ -1,0 +1,12 @@
+[package]
+name = "fastmail-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "fastmail"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { version = "1.0", features = ["full"] }
