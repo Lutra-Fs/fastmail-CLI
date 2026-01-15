@@ -39,9 +39,16 @@ impl<C: HttpClient> JmapClient<C> {
 
         let resp: serde_json::Value = serde_json::from_slice(&resp_bytes)?;
 
-        // Check for JMAP errors
-        if let Some(err) = resp["methodResponses"][0][1].get("error") {
-            anyhow::bail!("JMAP error: {}", err);
+        // JMAP response is an array of [name, arguments, tag] per RFC 8621
+        // Check for error in first response's arguments
+        if let Some(resp_array) = resp.as_array() {
+            if let Some(first_resp) = resp_array.first() {
+                if let Some(args) = first_resp.get(1) {
+                    if let Some(err) = args.get("error") {
+                        anyhow::bail!("JMAP error: {}", err);
+                    }
+                }
+            }
         }
 
         Ok(resp)
@@ -56,15 +63,30 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let resp = self.call("Email/query", params).await?;
-        let ids: Vec<String> = resp["methodResponses"][0][1]["ids"]
+
+        // Parse response array: [[method, args, tag]]
+        let resp_array = resp
             .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(String::from)
-                    .collect()
-            })
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: not an array"))?;
+
+        let first_resp = resp_array
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
+
+        let args = first_resp
+            .get(1)
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no arguments"))?;
+
+        let ids_arr = args
+            .get("ids")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no ids"))?;
+
+        let ids: Vec<String> = ids_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(String::from)
+            .collect();
 
         Ok(ids)
     }
@@ -81,16 +103,28 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let resp = self.call("Email/get", params).await?;
-        let emails: Vec<Email> = resp["methodResponses"][0][1]["list"]
-            .as_array()
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
-                    .collect()
-            })
-            .unwrap_or_default();
 
-        Ok(emails)
+        // Parse response array: [[method, args, tag]]
+        let resp_array = resp
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: not an array"))?;
+
+        let first_resp = resp_array
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
+
+        let args = first_resp
+            .get(1)
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no arguments"))?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
     }
 
     /// Get a single email by ID

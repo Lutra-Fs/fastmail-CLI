@@ -1,0 +1,72 @@
+// fastmail-client/src/client.rs
+use anyhow::{anyhow, Result};
+use jmap_client::{HttpClient, JmapClient, ReqwestClient, Session};
+
+const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
+
+pub struct FastmailClient {
+    inner: JmapClient<ReqwestClient>,
+    account_email: String,
+}
+
+impl FastmailClient {
+    pub async fn new(token: String) -> Result<Self> {
+        let http_client = ReqwestClient::new().with_token(token.clone());
+
+        // Fetch session from Fastmail
+        let session = Self::fetch_session(&http_client).await?;
+
+        // Get account email from session first (before moving session)
+        let account_email = Self::get_primary_account_email(&session).await?;
+
+        // Parse account ID from session
+        let account_id = session
+            .accounts
+            .first()
+            .ok_or_else(|| anyhow!("No account in session"))?
+            .account_id
+            .clone();
+
+        let inner = JmapClient::new(http_client, session.api_url, account_id);
+
+        Ok(Self {
+            inner,
+            account_email,
+        })
+    }
+
+    async fn fetch_session(http: &ReqwestClient) -> Result<Session> {
+        let body = b"";
+        let resp_bytes = http
+            .get(FASTMAIL_SESSION_URL, body.to_vec())
+            .await
+            .map_err(|e| anyhow!("Failed to fetch session: {}", e.message))?;
+
+        let session: Session = serde_json::from_slice(&resp_bytes)?;
+        Ok(session)
+    }
+
+    async fn get_primary_account_email(_session: &Session) -> Result<String> {
+        // For now, return a placeholder. In real implementation, we'd parse
+        // the account data more carefully to get the actual email.
+        Ok("user@fastmail.com".to_string())
+    }
+
+    pub fn account_id(&self) -> &str {
+        self.inner.account_id()
+    }
+
+    pub fn account_email(&self) -> &str {
+        &self.account_email
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fastmail_session_url() {
+        assert_eq!(FASTMAIL_SESSION_URL, "https://api.fastmail.com/jmap/session");
+    }
+}
