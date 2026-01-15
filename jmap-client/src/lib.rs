@@ -5,7 +5,7 @@ pub mod types;
 
 pub use client::JmapClient;
 pub use http::{HttpClient, HttpError};
-pub use types::{Email, EmailAddress};
+pub use types::{Email, EmailAddress, MaskedEmailState};
 
 // Re-export reqwest client when feature is enabled
 #[cfg(feature = "reqwest")]
