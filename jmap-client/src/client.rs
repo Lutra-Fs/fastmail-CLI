@@ -1,8 +1,18 @@
 // jmap-client/src/client.rs
 use crate::http::HttpClient;
-use crate::types::{Email, MaskedEmail, MaskedEmailState};
+use crate::types::Email;
 use anyhow::Result;
 use serde_json::json;
+
+const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
+const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
+
+#[derive(Debug, Clone)]
+pub struct Invocation {
+    pub name: String,
+    pub args: serde_json::Value,
+    pub tag: String,
+}
 
 pub struct JmapClient<C: HttpClient> {
     http: C,
@@ -23,10 +33,19 @@ impl<C: HttpClient> JmapClient<C> {
         &self.account_id
     }
 
-    /// Make a JMAP request
-    async fn call(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn call_method(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY];
+        self.call_method_with_using(&using, method, params).await
+    }
+
+    pub async fn call_method_with_using(
+        &self,
+        using: &[&str],
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let body = json!({
-            "using": ["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+            "using": using,
             "methodCalls": [[method, params, "0"]],
         });
 
@@ -39,19 +58,24 @@ impl<C: HttpClient> JmapClient<C> {
 
         let resp: serde_json::Value = serde_json::from_slice(&resp_bytes)?;
 
-        // JMAP response is an array of [name, arguments, tag] per RFC 8621
-        // Check for error in first response's arguments
-        if let Some(resp_array) = resp.as_array() {
-            if let Some(first_resp) = resp_array.first() {
-                if let Some(args) = first_resp.get(1) {
-                    if let Some(err) = args.get("error") {
-                        anyhow::bail!("JMAP error: {}", err);
-                    }
-                }
-            }
+        let responses = parse_method_responses(&resp)?;
+        let first = responses
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
+
+        if first.name == "error" {
+            anyhow::bail!("JMAP error: {}", first.args);
         }
 
-        Ok(resp)
+        if first.name != method {
+            anyhow::bail!(
+                "Unexpected JMAP response method: expected {}, got {}",
+                method,
+                first.name
+            );
+        }
+
+        Ok(first.args.clone())
     }
 
     /// List emails with optional limit
@@ -62,20 +86,7 @@ impl<C: HttpClient> JmapClient<C> {
             "sort": [{"property": "receivedAt", "isAscending": false}]
         });
 
-        let resp = self.call("Email/query", params).await?;
-
-        // Parse response array: [[method, args, tag]]
-        let resp_array = resp
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: not an array"))?;
-
-        let first_resp = resp_array
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
-
-        let args = first_resp
-            .get(1)
-            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no arguments"))?;
+        let args = self.call_method("Email/query", params).await?;
 
         let ids_arr = args
             .get("ids")
@@ -102,20 +113,7 @@ impl<C: HttpClient> JmapClient<C> {
             "ids": ids,
         });
 
-        let resp = self.call("Email/get", params).await?;
-
-        // Parse response array: [[method, args, tag]]
-        let resp_array = resp
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: not an array"))?;
-
-        let first_resp = resp_array
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
-
-        let args = first_resp
-            .get(1)
-            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no arguments"))?;
+        let args = self.call_method("Email/get", params).await?;
 
         let list = args
             .get("list")
@@ -147,102 +145,88 @@ impl<C: HttpClient> JmapClient<C> {
             "destroy": ids,
         });
 
-        self.call("Email/set", params).await?;
+        self.call_method("Email/set", params).await?;
         Ok(())
     }
+}
 
-    /// List all masked emails
-    pub async fn masked_email_get_all(&self) -> Result<Vec<MaskedEmail>> {
-        let params = json!({
-            "accountId": self.account_id,
-            "ids": null,  // Get all
-        });
+fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
+    let obj = resp
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: not an object"))?;
 
-        let resp = self.call("MaskedEmail/get", params).await?;
+    let responses = obj
+        .get("methodResponses")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: missing methodResponses"))?;
 
-        // CORRECT: Parse as JMAP array [[method, args, tag]]
-        // Extract the "list" field from the args (second element of first response)
-        let list = if let Some(resp_array) = resp.as_array() {
-            let args = resp_array
-                .first()
-                .and_then(|r| r.get(1));
+    let mut invocations = Vec::with_capacity(responses.len());
+    for item in responses {
+        let arr = item
+            .as_array()
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: invalid invocation"))?;
 
-            if let Some(args) = args {
-                if let Some(list_val) = args.get("list").and_then(|l| l.as_array()) {
-                    list_val.iter()
-                        .map(|v| serde_json::from_value::<MaskedEmail>(v.clone()))
-                        .collect::<Result<Vec<_>, _>>()?
-                } else {
-                    Vec::new()
-                }
-            } else {
-                Vec::new()
-            }
-        } else {
-            Vec::new()
-        };
-
-        Ok(list)
-    }
-
-    /// Create a new masked email
-    pub async fn masked_email_create(
-        &self,
-        for_domain: &str,
-        description: &str,
-        email_prefix: Option<&str>,
-    ) -> Result<MaskedEmail> {
-        let mut create_obj = json!({
-            "forDomain": for_domain,
-            "description": description,
-        });
-
-        if let Some(prefix) = email_prefix {
-            create_obj["emailPrefix"] = json!(prefix);
+        if arr.len() != 3 {
+            return Err(anyhow::anyhow!(
+                "Invalid JMAP response: invocation must have 3 elements"
+            ));
         }
 
-        let params = json!({
-            "accountId": self.account_id,
-            "create": {"new": create_obj},
-        });
+        let name = arr[0]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: method name not string"))?
+            .to_string();
+        let args = arr[1].clone();
+        let tag = arr[2]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: tag not string"))?
+            .to_string();
 
-        let resp = self.call("MaskedEmail/set", params).await?;
-
-        // CORRECT: Parse as JMAP array, extract from "created"->"new"
-        let created = if let Some(resp_array) = resp.as_array() {
-            resp_array
-                .first()
-                .and_then(|r| r.get(1))
-                .and_then(|args| args.get("created"))
-                .and_then(|c| c.get("new"))
-                .cloned()
-        } else {
-            return Err(anyhow::anyhow!("Invalid response format"));
-        };
-
-        let created_value = created.ok_or_else(|| anyhow::anyhow!("No created email in response"))?;
-        let email: MaskedEmail = serde_json::from_value(created_value)?;
-        Ok(email)
+        invocations.push(Invocation { name, args, tag });
     }
 
-    /// Update masked email state
-    pub async fn masked_email_set_state(
-        &self,
-        id: &str,
-        state: MaskedEmailState,
-    ) -> Result<()> {
-        let params = json!({
-            "accountId": self.account_id,
-            "update": { id: { "state": serde_json::to_value(state)? } },
-        });
+    Ok(invocations)
+}
 
-        self.call("MaskedEmail/set", params).await?;
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::http::HttpError;
+    use async_trait::async_trait;
+
+    struct MockHttpClient {
+        response: Vec<u8>,
     }
 
-    /// Delete (set to deleted state) a masked email
-    pub async fn masked_email_delete(&self, id: &str) -> Result<()> {
-        self.masked_email_set_state(id, MaskedEmailState::Deleted)
+    #[async_trait]
+    impl HttpClient for MockHttpClient {
+        async fn post_json(&self, _url: &str, _body: Vec<u8>) -> Result<Vec<u8>, HttpError> {
+            Ok(self.response.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn test_call_method_parses_method_responses() {
+        let response = serde_json::json!({
+            "methodResponses": [
+                ["Email/query", {"ids": ["id1"]}, "0"]
+            ],
+            "sessionState": "state1"
+        });
+
+        let client = JmapClient::new(
+            MockHttpClient {
+                response: serde_json::to_vec(&response).unwrap(),
+            },
+            "https://example.com/jmap".to_string(),
+            "acc1".to_string(),
+        );
+
+        let args = client
+            .call_method("Email/query", serde_json::json!({"accountId": "acc1"}))
             .await
+            .unwrap();
+
+        assert_eq!(args["ids"], serde_json::json!(["id1"]));
     }
 }

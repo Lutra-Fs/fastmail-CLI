@@ -13,3 +13,6 @@ serde_json = { workspace = true }
 [features]
 default = ["reqwest"]
 reqwest = ["dep:reqwest"]
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["macros", "rt"] }
