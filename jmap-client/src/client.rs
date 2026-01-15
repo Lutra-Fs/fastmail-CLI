@@ -1,6 +1,6 @@
 // jmap-client/src/client.rs
 use crate::http::HttpClient;
-use crate::types::Email;
+use crate::types::{Email, MaskedEmail, MaskedEmailState};
 use anyhow::Result;
 use serde_json::json;
 
@@ -149,5 +149,100 @@ impl<C: HttpClient> JmapClient<C> {
 
         self.call("Email/set", params).await?;
         Ok(())
+    }
+
+    /// List all masked emails
+    pub async fn masked_email_get_all(&self) -> Result<Vec<MaskedEmail>> {
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": null,  // Get all
+        });
+
+        let resp = self.call("MaskedEmail/get", params).await?;
+
+        // CORRECT: Parse as JMAP array [[method, args, tag]]
+        // Extract the "list" field from the args (second element of first response)
+        let list = if let Some(resp_array) = resp.as_array() {
+            let args = resp_array
+                .first()
+                .and_then(|r| r.get(1));
+
+            if let Some(args) = args {
+                if let Some(list_val) = args.get("list").and_then(|l| l.as_array()) {
+                    list_val.iter()
+                        .map(|v| serde_json::from_value::<MaskedEmail>(v.clone()))
+                        .collect::<Result<Vec<_>, _>>()?
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        };
+
+        Ok(list)
+    }
+
+    /// Create a new masked email
+    pub async fn masked_email_create(
+        &self,
+        for_domain: &str,
+        description: &str,
+        email_prefix: Option<&str>,
+    ) -> Result<MaskedEmail> {
+        let mut create_obj = json!({
+            "forDomain": for_domain,
+            "description": description,
+        });
+
+        if let Some(prefix) = email_prefix {
+            create_obj["emailPrefix"] = json!(prefix);
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "create": {"new": create_obj},
+        });
+
+        let resp = self.call("MaskedEmail/set", params).await?;
+
+        // CORRECT: Parse as JMAP array, extract from "created"->"new"
+        let created = if let Some(resp_array) = resp.as_array() {
+            resp_array
+                .first()
+                .and_then(|r| r.get(1))
+                .and_then(|args| args.get("created"))
+                .and_then(|c| c.get("new"))
+                .cloned()
+        } else {
+            return Err(anyhow::anyhow!("Invalid response format"));
+        };
+
+        let created_value = created.ok_or_else(|| anyhow::anyhow!("No created email in response"))?;
+        let email: MaskedEmail = serde_json::from_value(created_value)?;
+        Ok(email)
+    }
+
+    /// Update masked email state
+    pub async fn masked_email_set_state(
+        &self,
+        id: &str,
+        state: MaskedEmailState,
+    ) -> Result<()> {
+        let params = json!({
+            "accountId": self.account_id,
+            "update": { id: { "state": serde_json::to_value(state)? } },
+        });
+
+        self.call("MaskedEmail/set", params).await?;
+        Ok(())
+    }
+
+    /// Delete (set to deleted state) a masked email
+    pub async fn masked_email_delete(&self, id: &str) -> Result<()> {
+        self.masked_email_set_state(id, MaskedEmailState::Deleted)
+            .await
     }
 }
