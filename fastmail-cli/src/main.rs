@@ -157,8 +157,12 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
             print_response(&resp)?;
             Ok(())
         }
-        MailCommands::Read { id: _ } => {
-            // Placeholder
+        MailCommands::Read { id } => {
+            let client = load_client().await?;
+            let email = client.get_email(&id).await?;
+
+            let resp = Response::ok(email);
+            print_response(&resp)?;
             Ok(())
         }
         MailCommands::Delete {
