@@ -2,7 +2,20 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use fastmail_client::FastmailClient;
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
+use std::env;
+
+async fn load_client() -> Result<FastmailClient> {
+    let token = env::var("FASTMAIL_TOKEN")
+        .or_else(|_| -> Result<String> {
+            Err(anyhow::anyhow!(
+                "FASTMAIL_TOKEN environment variable not set"
+            ))
+        })?;
+
+    FastmailClient::new(token).await
+}
 
 #[derive(Parser)]
 #[command(name = "fastmail")]
@@ -129,12 +142,14 @@ async fn main() -> Result<()> {
 
 async fn handle_mail(cmd: MailCommands) -> Result<()> {
     match cmd {
-        MailCommands::List { mailbox: _, limit: _ } => {
-            // Placeholder
-            let resp: Response<Vec<String>> = Response::ok_with_meta(
-                vec![],
+        MailCommands::List { mailbox: _, limit } => {
+            let client = load_client().await?;
+            let emails = client.list_emails(limit).await?;
+
+            let resp = Response::ok_with_meta(
+                emails,
                 Meta {
-                    rate_limit: None,
+                    rate_limit: None,  // TODO: track rate limits
                     dry_run: None,
                     operation_id: None,
                 },
