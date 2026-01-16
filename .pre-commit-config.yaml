@@ -1,0 +1,74 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+default_language_version:
+  python: python3
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+
+  # Rust specific hooks
+  - repo: local
+    hooks:
+      # Format check - always run, very fast
+      - id: cargo-fmt
+        name: cargo fmt
+        description: Check if Rust code is properly formatted
+        entry: cargo fmt -- --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # Clippy lints - fast enough for pre-commit
+      - id: cargo-clippy
+        name: cargo clippy
+        description: Run Rust linter (clippy)
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      # Test only changed crates - smart staging
+      - id: cargo-test-staged
+        name: cargo test (staged)
+        description: Run tests only for changed workspace crates
+        entry: bash -c '
+          set -e
+          changed_files=$(git diff --name-only --cached HEAD | grep -E "\.rs$" || true)
+          if [ -z "$changed_files" ]; then
+            exit 0
+          fi
+          # Get unique crate directories that changed
+          changed_crates=$(echo "$changed_files" | cut -d/ -f1 | sort -u)
+          echo "Changed files affect crates: $changed_crates"
+          # Test each changed crate
+          for crate in $changed_crates; do
+            if [ -f "$crate/Cargo.toml" ]; then
+              echo "Testing crate: $crate"
+              cargo test -p "$crate" --quiet
+            fi
+          done
+        '
+        language: system
+        types: [rust]
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]  # Can change to [pre-push] if too slow
+
+  # Commit message linting
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.1.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
