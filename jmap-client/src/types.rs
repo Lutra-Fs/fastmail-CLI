@@ -72,14 +72,19 @@ pub struct AccountData {
     pub account_capabilities: Option<HashMap<String, serde_json::Value>>,
 }
 
-// Blob types - placeholders to be implemented in later tasks
-// These will be properly implemented in upcoming tasks
+// Blob types (RFC 9404)
 
-/// Blob capability from server (RFC 9404)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// JMAP Blob capability (urn:ietf:params:jmap:blob)
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlobCapability {
-    #[serde(rename = "maxSize")]
-    pub max_size: Option<u64>,
+    #[serde(rename = "maxSizeBlobSet")]
+    pub max_size_blob_set: Option<u64>,
+    #[serde(rename = "maxDataSources")]
+    pub max_data_sources: u64,
+    #[serde(rename = "supportedTypeNames")]
+    pub supported_type_names: Vec<String>,
+    #[serde(rename = "supportedDigestAlgorithms")]
+    pub supported_digest_algorithms: Vec<String>,
 }
 
 /// Blob/upload request object
@@ -114,43 +119,78 @@ pub enum DataSourceObject {
 }
 
 /// Response when a blob is created (RFC 9404)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlobCreatedInfo {
     pub id: String,
     #[serde(rename = "type")]
-    pub type_: String,
+    pub type_: Option<String>,
     pub size: u64,
 }
 
 /// Response from blob upload (RFC 9404)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlobUploadResponse {
-    #[serde(rename = "blobId")]
-    pub blob_id: String,
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub size: u64,
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(default)]
+    pub created: std::collections::HashMap<String, BlobCreatedInfo>,
+    #[serde(default)]
+    #[serde(rename = "notCreated")]
+    pub not_created: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Response from blob get (RFC 9404)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlobGetResponse {
-    #[serde(rename = "accountId")]
-    pub account_id: String,
-    #[serde(rename = "blobId")]
-    pub blob_id: String,
-    #[serde(rename = "type")]
-    pub type_: String,
+    pub id: String,
+    #[serde(rename = "data:asText")]
+    #[serde(default)]
+    pub data_as_text: Option<String>,
+    #[serde(rename = "data:asBase64")]
+    #[serde(default)]
+    pub data_as_base64: Option<String>,
+    /// Dynamic digest properties (digest:sha, digest:sha-256, etc.)
+    #[serde(flatten)]
+    pub digests: std::collections::HashMap<String, String>,
+    #[serde(default)]
     pub size: u64,
-    pub expires: String,
+    #[serde(rename = "isEncodingProblem")]
+    #[serde(default)]
+    pub is_encoding_problem: bool,
+    #[serde(rename = "isTruncated")]
+    #[serde(default)]
+    pub is_truncated: bool,
+}
+
+impl BlobGetResponse {
+    /// Get digest value for algorithm if present
+    pub fn digest(&self, algorithm: &str) -> Option<&String> {
+        self.digests.get(&format!("digest:{}", algorithm))
+    }
+
+    /// Get data as bytes (decodes base64 if needed)
+    pub fn as_bytes(&self) -> Result<Vec<u8>, anyhow::Error> {
+        if let Some(text) = &self.data_as_text {
+            Ok(text.as_bytes().to_vec())
+        } else if let Some(b64) = &self.data_as_base64 {
+            crate::blob::decode_base64(b64)
+        } else {
+            Err(anyhow::anyhow!("No data available"))
+        }
+    }
+
+    /// Get data as text if UTF-8 valid
+    pub fn as_text(&self) -> Result<String, anyhow::Error> {
+        self.data_as_text
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Data not valid UTF-8"))
+    }
 }
 
 /// Info from blob lookup (RFC 9404)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlobLookupInfo {
-    #[serde(rename = "blobId")]
-    pub blob_id: String,
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub size: u64,
+    pub id: String,
+    #[serde(rename = "matchedIds")]
+    pub matched_ids: std::collections::HashMap<String, Vec<String>>,
 }
