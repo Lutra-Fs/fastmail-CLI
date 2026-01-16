@@ -434,4 +434,52 @@ mod tests {
         assert_eq!(resp.digest("sha-256"), Some(&"def456".to_string()));
         assert_eq!(resp.digest("md5"), None);
     }
+
+    #[test]
+    fn test_principal_type_serialization() {
+        use serde_json::json;
+
+        let pt = PrincipalType::Individual;
+        let json = serde_json::to_value(pt).unwrap();
+        assert_eq!(json, json!("individual"));
+
+        let pt = PrincipalType::Group;
+        let json = serde_json::to_value(pt).unwrap();
+        assert_eq!(json, json!("group"));
+
+        let pt = PrincipalType::Resource;
+        let json = serde_json::to_value(pt).unwrap();
+        assert_eq!(json, json!("resource"));
+
+        let pt = PrincipalType::Location;
+        let json = serde_json::to_value(pt).unwrap();
+        assert_eq!(json, json!("location"));
+
+        let pt = PrincipalType::Other;
+        let json = serde_json::to_value(pt).unwrap();
+        assert_eq!(json, json!("other"));
+    }
+
+    #[test]
+    fn test_principal_filter_condition_serialization() {
+        use serde_json::json;
+
+        let filter = PrincipalFilterCondition {
+            account_ids: None,
+            email: Some("test@example.com".to_string()),
+            name: None,
+            text: None,
+            type_: Some(PrincipalType::Individual),
+            time_zone: None,
+        };
+
+        let json = serde_json::to_value(filter).unwrap();
+        assert_eq!(
+            json,
+            json!({
+                "email": "test@example.com",
+                "type": "individual"
+            })
+        );
+    }
 }
