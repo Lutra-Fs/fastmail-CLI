@@ -2,6 +2,41 @@
 use serde::Serialize;
 use std::fmt;
 
+/// Output format option
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    /// Auto-detect based on TTY
+    Auto,
+    /// Force JSON output
+    Json,
+    /// Force human-readable output
+    Human,
+}
+
+/// Trait for types that can be formatted for output
+pub trait Formattable {
+    /// Format as JSON string
+    fn to_json(&self) -> String;
+
+    /// Format as human-readable string
+    fn to_human(&self) -> String;
+}
+
+/// Format output based on the specified format
+pub fn format_output<T: Formattable>(data: &T, format: OutputFormat) -> String {
+    match format {
+        OutputFormat::Json => data.to_json(),
+        OutputFormat::Human => data.to_human(),
+        OutputFormat::Auto => {
+            if atty::is(atty::Stream::Stdout) {
+                data.to_human()
+            } else {
+                data.to_json()
+            }
+        }
+    }
+}
+
 /// Standard JSON response envelope
 #[derive(Debug, Serialize)]
 pub struct Response<T> {
@@ -138,4 +173,61 @@ impl ExitCode {
 pub fn print_response<T: Serialize>(resp: &Response<T>) -> anyhow::Result<()> {
     println!("{}", serde_json::to_string(resp)?);
     Ok(())
+}
+
+/// Print a styled success message
+pub fn print_success(message: &str) {
+    let term = console::Term::stdout();
+    let _ = term.write_str(&format!("{} {}\n", console::style("✓").green(), message));
+}
+
+/// Print a styled error message
+pub fn print_error(message: &str) {
+    let term = console::Term::stdout();
+    let _ = term.write_str(&format!("{} {}\n", console::style("Error:").red(), message));
+}
+
+/// Print a styled warning message
+pub fn print_warning(message: &str) {
+    let term = console::Term::stdout();
+    let _ = term.write_str(&format!("{} {}\n", console::style("Warning:").yellow(), message));
+}
+
+/// Print a styled info/header
+pub fn print_header(key: &str, value: &str) {
+    let term = console::Term::stdout();
+    let _ = term.write_str(&format!("{}: {}\n", console::style(key).bold(), value));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestData {
+        message: String,
+    }
+
+    impl Formattable for TestData {
+        fn to_json(&self) -> String {
+            format!(r#"{{"message":"{}"}}"#, self.message)
+        }
+
+        fn to_human(&self) -> String {
+            format!("Message: {}", self.message)
+        }
+    }
+
+    #[test]
+    fn test_format_output_json() {
+        let data = TestData { message: "hello".to_string() };
+        let result = format_output(&data, OutputFormat::Json);
+        assert_eq!(result, r#"{"message":"hello"}"#);
+    }
+
+    #[test]
+    fn test_format_output_human() {
+        let data = TestData { message: "hello".to_string() };
+        let result = format_output(&data, OutputFormat::Human);
+        assert_eq!(result, "Message: hello");
+    }
 }

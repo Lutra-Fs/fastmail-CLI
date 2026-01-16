@@ -3,17 +3,26 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use commands::{handle_calendar, handle_contacts, handle_files, CalendarCommands, ContactsCommands, FilesCommands};
+use commands::{handle_calendar, handle_contacts, handle_files, run_setup, CalendarCommands, ContactsCommands, FilesCommands};
 use fastmail_client::{FastmailClient, MaskedEmailState};
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
 use serde_json::json;
 use std::env;
 
 async fn load_client() -> Result<FastmailClient> {
-    let token = env::var("FASTMAIL_TOKEN")
-        .map_err(|_| anyhow::anyhow!(
-            "FASTMAIL_TOKEN environment variable not set"
-        ))?;
+    // Try environment variable first (for backwards compatibility)
+    let token = if let Ok(token) = env::var("FASTMAIL_TOKEN") {
+        token
+    } else {
+        // Fall back to config file
+        let config = fastmail_client::Config::load()?;
+        if config.token.is_empty() {
+            return Err(anyhow::anyhow!(
+                "No credentials found. Run 'fastmail setup' or set FASTMAIL_TOKEN environment variable"
+            ));
+        }
+        config.token
+    };
 
     FastmailClient::new(token).await
 }
@@ -35,6 +44,10 @@ fn confirm(prompt: &str) -> Result<bool> {
 #[command(name = "fastmail")]
 #[command(about = "A command-line interface for Fastmail", long_about = None)]
 struct Cli {
+    /// Output format: auto, json, human (default: auto)
+    #[arg(short = 'o', long, global = true, value_name = "FORMAT")]
+    output: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -65,6 +78,8 @@ enum Commands {
     /// Configuration
     #[command(subcommand)]
     Config(ConfigCommands),
+    /// Setup Fastmail CLI credentials
+    Setup,
 }
 
 #[derive(Subcommand)]
@@ -187,6 +202,11 @@ enum AllowRecipientCommands {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install default crypto provider for rustls (required by libdav)
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .expect("Failed to install crypto provider");
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -198,6 +218,10 @@ async fn main() -> Result<()> {
         Commands::Calendar(cmd) => handle_calendar(cmd).await,
         Commands::Files(cmd) => handle_files(cmd).await,
         Commands::Config(cmd) => handle_config(cmd).await,
+        Commands::Setup => {
+            let exit_code = run_setup().await?;
+            std::process::exit(exit_code);
+        }
     }
 }
 

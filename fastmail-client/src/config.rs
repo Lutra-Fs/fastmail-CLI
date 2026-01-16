@@ -9,15 +9,18 @@ use std::path::PathBuf;
 #[derive(Default)]
 pub struct Config {
     #[serde(default)]
-    account: AccountConfig,
+    pub account: AccountConfig,
     #[serde(default)]
-    safety: SafetyConfig,
+    pub safety: SafetyConfig,
     /// Account ID for DAV operations (retrieved from JMAP session)
     #[serde(default)]
     pub account_id: Option<String>,
-    /// Authentication token for API and DAV operations
+    /// Authentication token for JMAP API
     #[serde(default)]
     pub token: String,
+    /// App password for DAV operations (CalDAV/CardDAV/WebDAV)
+    #[serde(default)]
+    pub dav_password: Option<String>,
     /// DAV endpoint configuration
     #[serde(default)]
     pub dav_endpoints: Option<DavEndpoints>,
@@ -65,15 +68,15 @@ pub struct DavEndpoints {
 }
 
 fn default_caldav_url() -> String {
-    "https://dav.fastmail.com".to_string()
+    "https://caldav.fastmail.com".to_string()
 }
 
 fn default_carddav_url() -> String {
-    "https://dav.fastmail.com".to_string()
+    "https://carddav.fastmail.com".to_string()
 }
 
 fn default_webdav_url() -> String {
-    "https://dav.fastmail.com".to_string()
+    "https://www.fastmail.com".to_string()
 }
 
 impl Default for DavEndpoints {
@@ -103,7 +106,18 @@ impl Config {
         }
 
         let content = fs::read_to_string(&config_path)?;
-        let config: Config = toml::from_str(&content)?;
+        let mut config: Config = toml::from_str(&content)?;
+
+        // Allow DAV credentials to be overridden by environment variables
+        if let Ok(dav_password) = std::env::var("FASTMAIL_DAV_PASSWORD") {
+            config.dav_password = Some(dav_password);
+        }
+
+        // Allow email to be overridden by environment variable
+        if let Ok(email) = std::env::var("FASTMAIL_EMAIL") {
+            config.account.email = Some(email);
+        }
+
         Ok(config)
     }
 
@@ -134,6 +148,13 @@ impl Config {
 
     pub fn account_email(&self) -> Option<&str> {
         self.account.email.as_deref()
+    }
+
+    /// Get the username for DAV authentication (email address)
+    /// DAV endpoints use HTTP Basic Auth with email as username
+    pub fn get_dav_username(&self) -> Result<&str> {
+        self.account.email.as_deref()
+            .ok_or_else(|| anyhow::anyhow!("DAV username (email) not set. Please set FASTMAIL_EMAIL environment variable"))
     }
 
     /// Get the CalDAV base URL
