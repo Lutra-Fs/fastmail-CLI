@@ -207,4 +207,4 @@ These commands are included for compatibility with other JMAP providers that sup
 
 ## License
 
-MIT OR Apache-2.0
+MIT
