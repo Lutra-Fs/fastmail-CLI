@@ -16,3 +16,10 @@ pub use whitelist::Whitelist;
 
 // Re-export from jmap-client
 pub use jmap_client::{Mailbox, BlobCapability};
+// Sharing types
+pub use jmap_client::{
+    Principal, PrincipalType, PrincipalFilterCondition,
+    ShareNotification, Entity,
+    ShareNotificationFilterCondition,
+    PrincipalsAccountCapability, PrincipalsOwnerCapability,
+};

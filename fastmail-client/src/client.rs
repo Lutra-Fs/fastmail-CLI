@@ -342,6 +342,82 @@ impl FastmailClient {
     pub fn jmap_client(&self) -> &JmapClient<ReqwestClient> {
         &self.inner
     }
+
+    // Sharing capability methods (RFC 9670)
+
+    /// Check if server supports Principals capability
+    pub fn has_principals_capability(&self) -> bool {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:principals"))
+            .is_some()
+    }
+
+    /// Get Principals capability details if available
+    pub fn principals_capability(&self) -> Option<jmap_client::PrincipalsAccountCapability> {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:principals"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+
+    /// Get owner capability (for finding principal account)
+    pub fn owner_capability(&self) -> Option<jmap_client::PrincipalsOwnerCapability> {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:principals:owner"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+
+    /// Get current user's Principal ID
+    pub fn current_principal_id(&self) -> Option<String> {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:principals"))
+            .and_then(|v| v.get("currentUserPrincipalId"))
+            .and_then(|v| v.as_str())
+            .map(String::from)
+    }
+
+    /// List all Principals
+    pub async fn list_principals(
+        &self,
+        filter: Option<jmap_client::PrincipalFilterCondition>,
+        limit: Option<usize>,
+    ) -> Result<Vec<jmap_client::Principal>> {
+        self.inner.principal_query_and_get(filter, None, limit).await
+    }
+
+    /// Get a specific Principal by ID
+    pub async fn get_principal(&self, id: &str) -> Result<jmap_client::Principal> {
+        let results = self.inner.principal_get(&[id.to_string()], None).await?;
+        results
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Principal not found: {}", id))
+    }
+
+    /// List ShareNotifications
+    pub async fn list_share_notifications(
+        &self,
+        filter: Option<jmap_client::ShareNotificationFilterCondition>,
+        limit: Option<usize>,
+    ) -> Result<Vec<jmap_client::ShareNotification>> {
+        self.inner.share_notification_query_and_get(filter, None, limit).await
+    }
+
+    /// Dismiss ShareNotifications
+    pub async fn dismiss_share_notifications(&self, ids: &[String]) -> Result<()> {
+        self.inner.share_notification_destroy(ids).await
+    }
 }
 
 #[cfg(test)]
