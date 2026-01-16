@@ -11,6 +11,7 @@ const JMAP_CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 pub struct FastmailClient {
     inner: JmapClient<ReqwestClient>,
     account_email: String,
+    session: Session,
 }
 
 impl FastmailClient {
@@ -26,11 +27,12 @@ impl FastmailClient {
         // Parse account ID from session
         let account_id = Self::select_account_id(&session)?;
 
-        let inner = JmapClient::new(http_client, session.api_url, account_id);
+        let inner = JmapClient::new(http_client, session.api_url.clone(), account_id);
 
         Ok(Self {
             inner,
             account_email,
+            session,
         })
     }
 
@@ -204,6 +206,31 @@ impl FastmailClient {
 
     pub async fn delete_mailbox(&self, id: &str) -> Result<()> {
         self.inner.mailbox_delete(id).await
+    }
+
+    /// Check if server supports Blob capability
+    pub fn has_blob_capability(&self) -> bool {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:blob"))
+            .is_some()
+    }
+
+    /// Get Blob capability details if available
+    pub fn blob_capability(&self) -> Option<jmap_client::BlobCapability> {
+        self.session
+            .accounts
+            .get(self.inner.account_id())
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get("urn:ietf:params:jmap:blob"))
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+    }
+
+    /// Get access to inner JmapClient for direct Blob operations
+    pub fn jmap_client(&self) -> &JmapClient<ReqwestClient> {
+        &self.inner
     }
 }
 

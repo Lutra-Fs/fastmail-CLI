@@ -9,4 +9,4 @@ pub use masked_email::{MaskedEmail, MaskedEmailState};
 pub use whitelist::Whitelist;
 
 // Re-export from jmap-client
-pub use jmap_client::Mailbox;
+pub use jmap_client::{Mailbox, BlobCapability};

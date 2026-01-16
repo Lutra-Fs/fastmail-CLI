@@ -75,7 +75,7 @@ pub struct AccountData {
 // Blob types (RFC 9404)
 
 /// JMAP Blob capability (urn:ietf:params:jmap:blob)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlobCapability {
     #[serde(rename = "maxSizeBlobSet")]
     pub max_size_blob_set: Option<u64>,
