@@ -18,6 +18,9 @@ pub struct Config {
     /// Authentication token for API and DAV operations
     #[serde(default)]
     pub token: String,
+    /// DAV endpoint configuration
+    #[serde(default)]
+    pub dav_endpoints: Option<DavEndpoints>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -48,6 +51,39 @@ fn default_require_new_recipient_flag() -> bool {
 
 fn default_require_confirm() -> bool {
     true
+}
+
+/// DAV endpoint configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DavEndpoints {
+    #[serde(default = "default_caldav_url")]
+    pub caldav: String,
+    #[serde(default = "default_carddav_url")]
+    pub carddav: String,
+    #[serde(default = "default_webdav_url")]
+    pub webdav: String,
+}
+
+fn default_caldav_url() -> String {
+    "https://dav.fastmail.com".to_string()
+}
+
+fn default_carddav_url() -> String {
+    "https://dav.fastmail.com".to_string()
+}
+
+fn default_webdav_url() -> String {
+    "https://dav.fastmail.com".to_string()
+}
+
+impl Default for DavEndpoints {
+    fn default() -> Self {
+        Self {
+            caldav: default_caldav_url(),
+            carddav: default_carddav_url(),
+            webdav: default_webdav_url(),
+        }
+    }
 }
 
 impl Config {
@@ -102,17 +138,26 @@ impl Config {
 
     /// Get the CalDAV base URL
     pub fn get_caldav_url(&self) -> String {
-        "https://dav.fastmail.com".to_string()
+        self.dav_endpoints
+            .as_ref()
+            .map(|d| d.caldav.clone())
+            .unwrap_or_else(default_caldav_url)
     }
 
     /// Get the CardDAV base URL
     pub fn get_carddav_url(&self) -> String {
-        "https://dav.fastmail.com".to_string()
+        self.dav_endpoints
+            .as_ref()
+            .map(|d| d.carddav.clone())
+            .unwrap_or_else(default_carddav_url)
     }
 
     /// Get the WebDAV base URL
     pub fn get_webdav_url(&self) -> String {
-        "https://dav.fastmail.com".to_string()
+        self.dav_endpoints
+            .as_ref()
+            .map(|d| d.webdav.clone())
+            .unwrap_or_else(default_webdav_url)
     }
 }
 
