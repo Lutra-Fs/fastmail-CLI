@@ -1,8 +1,7 @@
 // fastmail-client/src/dav.rs
+use crate::config::Config;
 use anyhow::Result;
-use hyper::Uri;
-use hyper::body::Incoming;
-use hyper::Response;
+use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
@@ -10,7 +9,6 @@ use libdav::dav::{
     Delete, FindCollections, FoundCollection, GetProperty, ListResources, ListedResource,
     PutResource, WebDavClient,
 };
-use libdav::Depth;
 use serde::{Deserialize, Serialize};
 use tower_http::auth::AddAuthorization;
 
@@ -36,17 +34,17 @@ impl From<ListedResource> for DavResource {
 
 /// DAV client wrapper for Fastmail
 ///
-/// Uses a simplified type to avoid complex generic constraints.
-/// The inner client handles the actual DAV operations.
+/// Note: The type parameter is complex due to libdav's generic requirements.
+/// We use a simplified Box-based trait object approach to hide this complexity.
 pub struct DavClient {
-    /// The underlying libdav WebDavClient
-    /// Boxed to avoid exposing complex generic types
-    inner: Box<dyn DavClientInner>,
+    /// The underlying libdav WebDavClient (boxed to hide complex generics)
+    client: Box<dyn DavClientInner>,
+    /// Base URL for this service instance
     base_url: String,
-    token: String,
 }
 
-/// Trait to abstract over the complex WebDavClient generic type
+/// Trait to abstract over the complex WebDavClient generic type.
+/// This allows us to hide the complex type parameters from the public API.
 #[async_trait::async_trait]
 trait DavClientInner: Send + Sync {
     async fn list_resources(&self, href: &str) -> Result<Vec<ListedResource>>;
@@ -54,22 +52,44 @@ trait DavClientInner: Send + Sync {
     async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>>;
     async fn find_collections(&self, uri: &Uri) -> Result<Vec<FoundCollection>>;
     async fn get_property(&self, href: &str, property: &libdav::PropertyName<'_, '_>) -> Result<Option<String>>;
+    fn clone_client(&self) -> Box<dyn DavClientInner>;
 }
 
 /// Concrete implementation of DavClientInner
 struct DavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = Response<Incoming>> + Send + Sync + 'static,
+    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>> + Send + Sync + 'static,
     C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
     C::Future: Send + 'static,
 {
     client: WebDavClient<C>,
 }
 
+impl<C> Clone for DavClientInnerImpl<C>
+where
+    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
+        + Send
+        + Sync
+        + Clone
+        + 'static,
+    C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
+    C::Future: Send + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl<C> DavClientInner for DavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = Response<Incoming>> + Send + Sync + 'static,
+    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
+        + Send
+        + Sync
+        + Clone
+        + 'static,
     C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
     C::Future: Send + 'static,
 {
@@ -100,13 +120,36 @@ where
         let response = self.client.request(GetProperty::new(href, property)).await?;
         Ok(response.value)
     }
+
+    fn clone_client(&self) -> Box<dyn DavClientInner> {
+        Box::new(self.clone())
+    }
 }
 
 impl DavClient {
-    /// Create a new DAV client from URL and credentials
-    pub async fn new(base_url: String, _account_id: String, token: String) -> Result<Self> {
-        // Build full service URL
-        let service_url = format!("{}/", base_url.trim_end_matches('/'));
+    /// Create a new DAV client from Fastmail config
+    ///
+    /// This method builds a DAV client for the specified service type.
+    /// It uses the config's account_id and token for authentication.
+    pub async fn from_config(config: &Config, service: DavService) -> Result<Self> {
+        let base_url = match service {
+            DavService::Calendars => config.get_caldav_url(),
+            DavService::AddressBooks => config.get_carddav_url(),
+            DavService::Files => config.get_webdav_url(),
+        };
+
+        let account_id = config
+            .account_id
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
+
+        let service_url = match service {
+            DavService::Calendars => format!("{}/dav/calendars/user/{}/", base_url, account_id),
+            DavService::AddressBooks => {
+                format!("{}/dav/addressbooks/user/{}/", base_url, account_id)
+            }
+            DavService::Files => format!("{}/files/{}/", base_url, account_id),
+        };
 
         // Create HTTPS connector
         let https_connector = HttpsConnectorBuilder::new()
@@ -115,39 +158,47 @@ impl DavClient {
             .enable_http1()
             .build();
 
-        // Build HTTP client with auth
+        // Build HTTP client with bearer token auth
         let https_client = Client::builder(TokioExecutor::new()).build(https_connector);
-        let https_client = AddAuthorization::bearer(https_client, &token);
+        let https_client = AddAuthorization::bearer(https_client, &config.token);
 
         // Create libdav client
         let uri = service_url.parse()?;
         let client = WebDavClient::new(uri, https_client);
 
-        let inner = Box::new(DavClientInnerImpl { client });
+        let inner: Box<dyn DavClientInner> = Box::new(DavClientInnerImpl { client });
 
         Ok(Self {
-            inner,
+            client: inner,
             base_url: service_url,
-            token,
         })
     }
 
-    /// List resources at a given path
+    /// Get the underlying libdav client
     ///
-    /// Note: libdav's ListResources uses Depth::One internally
-    pub async fn list(&self, path: &str, _depth: u8) -> Result<Vec<DavResource>> {
-        let href = self.build_href_str(path)?;
+    /// This returns a clone of the inner client for use with CalDAV/CardDAV.
+    pub fn inner(&self) -> Box<dyn DavClientInner> {
+        self.client.clone_client()
+    }
 
-        let resources = self.inner.list_resources(&href).await?;
+    /// List resources at a given path
+    pub async fn list(&self, path: &str, depth: u8) -> Result<Vec<DavResource>> {
+        let href = self.build_href(path)?;
+
+        // Note: libdav's ListResources hardcodes Depth::One
+        // The depth parameter is kept for API compatibility but not fully utilized
+        let _depth = depth; // Silenced unused warning
+
+        let resources = self.client.list_resources(&href).await?;
 
         Ok(resources.into_iter().map(DavResource::from).collect())
     }
 
     /// Get properties for a single resource
     pub async fn get_properties(&self, path: &str) -> Result<DavResource> {
-        let href = self.build_href_str(path)?;
+        let href = self.build_href(path)?;
 
-        let resources = self.inner.list_resources(&href).await?;
+        let resources = self.client.list_resources(&href).await?;
 
         resources
             .into_iter()
@@ -157,7 +208,7 @@ impl DavClient {
     }
 
     /// Create a collection (MKCOL)
-    /// Note: libdav 0.10 doesn't have direct MKCOL support, so this is unimplemented
+    /// Note: libdav 0.10 doesn't have direct MKCOL support
     pub async fn create_collection(&self, _path: &str) -> Result<()> {
         Err(anyhow::anyhow!(
             "Create collection not yet implemented - libdav 0.10 doesn't expose MKCOL"
@@ -166,29 +217,29 @@ impl DavClient {
 
     /// Delete a resource
     pub async fn delete(&self, path: &str) -> Result<()> {
-        let href = self.build_href_str(path)?;
-        self.inner.delete_resource(&href).await
+        let href = self.build_href(path)?;
+        self.client.delete_resource(&href).await
     }
 
     /// Upload/put a resource
     pub async fn put(&self, path: &str, content: &[u8], content_type: &str) -> Result<String> {
-        let href = self.build_href_str(path)?;
+        let href = self.build_href(path)?;
 
         // Convert bytes to string for libdav
         let data = String::from_utf8(content.to_vec())
             .map_err(|e| anyhow::anyhow!("Content is not valid UTF-8: {}", e))?;
 
-        let etag = self.inner.put_resource(&href, data, content_type).await?;
+        let etag = self.client.put_resource(&href, data, content_type).await?;
 
         Ok(etag.unwrap_or_default())
     }
 
     /// Get resource content
-    /// Note: This returns empty vec since ListResources doesn't return actual content
+    /// Note: Returns empty vec since ListResources doesn't return actual content
     pub async fn get(&self, path: &str) -> Result<Vec<u8>> {
-        let href = self.build_href_str(path)?;
+        let href = self.build_href(path)?;
 
-        let resources = self.inner.list_resources(&href).await?;
+        let resources = self.client.list_resources(&href).await?;
 
         let _resource = resources
             .into_iter()
@@ -212,7 +263,7 @@ impl DavClient {
     /// Find collections at a given path
     pub async fn find_collections(&self, path: &str) -> Result<Vec<FoundCollection>> {
         let uri = self.build_uri(path)?;
-        self.inner.find_collections(&uri).await
+        self.client.find_collections(&uri).await
     }
 
     /// Get a property for a resource
@@ -221,12 +272,12 @@ impl DavClient {
         path: &str,
         property_name: &libdav::PropertyName<'_, '_>,
     ) -> Result<Option<String>> {
-        let href = self.build_href_str(path)?;
-        self.inner.get_property(&href, property_name).await
+        let href = self.build_href(path)?;
+        self.client.get_property(&href, property_name).await
     }
 
-    /// Build href as String (libdav expects &str for most operations)
-    fn build_href_str(&self, path: &str) -> Result<String> {
+    /// Build href as String
+    fn build_href(&self, path: &str) -> Result<String> {
         let path = path.trim_start_matches('/');
 
         let full = if path.is_empty() {
@@ -240,7 +291,7 @@ impl DavClient {
 
     /// Build href as Uri (for operations that require Uri)
     fn build_uri(&self, path: &str) -> Result<Uri> {
-        let href = self.build_href_str(path)?;
+        let href = self.build_href(path)?;
         Ok(href.parse()?)
     }
 }
@@ -254,7 +305,7 @@ pub enum DavService {
 }
 
 impl DavService {
-    /// Get the base path for this service
+    /// Get the base path for this service (for URL construction)
     pub fn base_path(&self, account_id: &str) -> String {
         match self {
             DavService::Calendars => format!("/dav/calendars/user/{}/", account_id),
@@ -262,14 +313,35 @@ impl DavService {
             DavService::Files => format!("/files/{}/", account_id),
         }
     }
+}
 
-    /// Convert u8 depth to libdav depth
-    pub fn depth_from_u8(value: u8) -> Depth {
-        match value {
-            0 => Depth::Zero,
-            1 => Depth::One,
-            _ => Depth::Infinity,
-        }
+/// Convert u8 depth to libdav depth
+///
+/// The orphan rule prevents implementing `From<u8>` for `libdav::Depth` directly.
+/// Instead, use this helper function or call `.into()` on a `DepthValue` wrapper.
+pub fn depth_from_u8(value: u8) -> libdav::Depth {
+    match value {
+        0 => libdav::Depth::Zero,
+        1 => libdav::Depth::One,
+        _ => libdav::Depth::Infinity,
+    }
+}
+
+/// Wrapper type to enable From<u8> conversion for Depth
+///
+/// Due to Rust's orphan rule, we cannot implement `From<u8> for libdav::Depth`.
+/// Use this wrapper: `let depth: Depth = DepthValue::from(5u8).into();`
+pub struct DepthValue(pub u8);
+
+impl From<u8> for DepthValue {
+    fn from(value: u8) -> Self {
+        Self(value)
+    }
+}
+
+impl From<DepthValue> for libdav::Depth {
+    fn from(value: DepthValue) -> Self {
+        depth_from_u8(value.0)
     }
 }
 
@@ -278,24 +350,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_service_base_path() {
-        assert_eq!(
-            DavService::Calendars.base_path("user123"),
-            "/dav/calendars/user/user123/"
-        );
-        assert_eq!(
-            DavService::AddressBooks.base_path("user123"),
-            "/dav/addressbooks/user/user123/"
-        );
-        assert_eq!(DavService::Files.base_path("user123"), "/files/user123/");
+    fn test_depth_from_u8() {
+        // Test the helper function
+        assert!(matches!(depth_from_u8(0), libdav::Depth::Zero));
+        assert!(matches!(depth_from_u8(1), libdav::Depth::One));
+        assert!(matches!(depth_from_u8(2), libdav::Depth::Infinity));
+        assert!(matches!(depth_from_u8(99), libdav::Depth::Infinity));
     }
 
     #[test]
-    fn test_depth_from_u8() {
-        // Test that depth conversion works using PartialEq
-        assert!(matches!(DavService::depth_from_u8(0), Depth::Zero));
-        assert!(matches!(DavService::depth_from_u8(1), Depth::One));
-        assert!(matches!(DavService::depth_from_u8(2), Depth::Infinity));
-        assert!(matches!(DavService::depth_from_u8(99), Depth::Infinity));
+    fn test_depth_value_wrapper() {
+        // Test the wrapper type that enables From<u8>
+        let depth: libdav::Depth = DepthValue::from(0u8).into();
+        assert!(matches!(depth, libdav::Depth::Zero));
+
+        let depth: libdav::Depth = DepthValue::from(1u8).into();
+        assert!(matches!(depth, libdav::Depth::One));
+
+        let depth: libdav::Depth = DepthValue::from(99u8).into();
+        assert!(matches!(depth, libdav::Depth::Infinity));
+    }
+
+    #[test]
+    fn test_dav_service_paths() {
+        let account_id = "testuser";
+        let base_url = "https://dav.fastmail.com";
+
+        assert_eq!(
+            format!("{}{}", base_url, DavService::Calendars.base_path(account_id)),
+            "https://dav.fastmail.com/dav/calendars/user/testuser/"
+        );
+        assert_eq!(
+            format!("{}{}", base_url, DavService::AddressBooks.base_path(account_id)),
+            "https://dav.fastmail.com/dav/addressbooks/user/testuser/"
+        );
+        assert_eq!(
+            format!("{}{}", base_url, DavService::Files.base_path(account_id)),
+            "https://dav.fastmail.com/files/testuser/"
+        );
     }
 }

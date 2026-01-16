@@ -12,6 +12,12 @@ pub struct Config {
     account: AccountConfig,
     #[serde(default)]
     safety: SafetyConfig,
+    /// Account ID for DAV operations (retrieved from JMAP session)
+    #[serde(default)]
+    pub account_id: Option<String>,
+    /// Authentication token for API and DAV operations
+    #[serde(default)]
+    pub token: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -92,6 +98,21 @@ impl Config {
 
     pub fn account_email(&self) -> Option<&str> {
         self.account.email.as_deref()
+    }
+
+    /// Get the CalDAV base URL
+    pub fn get_caldav_url(&self) -> String {
+        "https://dav.fastmail.com".to_string()
+    }
+
+    /// Get the CardDAV base URL
+    pub fn get_carddav_url(&self) -> String {
+        "https://dav.fastmail.com".to_string()
+    }
+
+    /// Get the WebDAV base URL
+    pub fn get_webdav_url(&self) -> String {
+        "https://dav.fastmail.com".to_string()
     }
 }
 
