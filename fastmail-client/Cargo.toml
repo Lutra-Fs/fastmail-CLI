@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 directories = "5.0"
 jmap-client = { path = "../jmap-client" }
 serde = { workspace = true }
@@ -12,5 +13,11 @@ serde_json = { workspace = true }
 toml = "0.8"
 
 # DAV support
+hyper = "1.0"
+hyper-rustls = "0.27"
+hyper-util = "0.1"
 libdav = "0.10"
 http = "1.0"
+tokio = "1.0"
+tower-http = { version = "0.5", features = ["auth"] }
+tower-service = "0.3"
