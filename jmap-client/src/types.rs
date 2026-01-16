@@ -71,3 +71,70 @@ pub struct AccountData {
     #[serde(rename = "accountCapabilities")]
     pub account_capabilities: Option<HashMap<String, serde_json::Value>>,
 }
+
+// Blob types - placeholders to be implemented in later tasks
+// These will be properly implemented in upcoming tasks
+
+/// Blob capability from server (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobCapability {
+    #[serde(rename = "maxSize")]
+    pub max_size: Option<u64>,
+}
+
+/// Blob upload object (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobUploadObject {
+    #[serde(rename = "data")]
+    pub data: DataSourceObject,
+}
+
+/// Data source object for blob uploads (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSourceObject {
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub value: String,
+}
+
+/// Response when a blob is created (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobCreatedInfo {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub size: u64,
+}
+
+/// Response from blob upload (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobUploadResponse {
+    #[serde(rename = "blobId")]
+    pub blob_id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub size: u64,
+}
+
+/// Response from blob get (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobGetResponse {
+    #[serde(rename = "accountId")]
+    pub account_id: String,
+    #[serde(rename = "blobId")]
+    pub blob_id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub size: u64,
+    pub expires: String,
+}
+
+/// Info from blob lookup (RFC 9404)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobLookupInfo {
+    #[serde(rename = "blobId")]
+    pub blob_id: String,
+    #[serde(rename = "type")]
+    pub type_: String,
+    pub size: u64,
+}
