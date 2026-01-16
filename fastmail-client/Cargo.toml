@@ -13,6 +13,7 @@ serde_json = { workspace = true }
 toml = "0.8"
 
 # DAV support
+chrono = { version = "0.4", features = ["serde"] }
 hyper = "1.0"
 hyper-rustls = "0.27"
 hyper-util = "0.1"

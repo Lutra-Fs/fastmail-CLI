@@ -6,6 +6,7 @@ pub mod dav;
 pub mod masked_email;
 pub mod whitelist;
 
+pub use caldav::{CalDavClient, Calendar, CalendarEvent};
 pub use client::FastmailClient;
 pub use config::Config;
 pub use dav::{DavClient, DavResource, DavService, depth_from_u8, DepthValue};
