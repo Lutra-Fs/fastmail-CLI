@@ -141,16 +141,8 @@ async fn main() -> Result<()> {
 async fn handle_mail(cmd: MailCommands) -> Result<()> {
     match cmd {
         MailCommands::List { mailbox, limit } => {
-            if let Some(mailbox) = mailbox {
-                let resp = Response::<()>::error(ErrorResponse::validation_failed(format!(
-                    "Mailbox filtering not supported yet: {}",
-                    mailbox
-                )));
-                print_response(&resp)?;
-                std::process::exit(ExitCode::PermanentError.code());
-            }
             let client = load_client().await?;
-            let emails = client.list_emails(limit).await?;
+            let emails = client.list_emails(mailbox.as_deref(), limit).await?;
 
             let resp = Response::ok_with_meta(
                 emails,

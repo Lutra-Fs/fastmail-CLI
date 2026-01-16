@@ -1,7 +1,7 @@
 // fastmail-client/src/client.rs
 use crate::masked_email::{MaskedEmail, MaskedEmailState};
 use anyhow::{anyhow, Result};
-use jmap_client::{JmapClient, ReqwestClient, Session, Email, HttpClient};
+use jmap_client::{Email, HttpClient, JmapClient, ReqwestClient, Session};
 use serde_json::json;
 
 const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
@@ -24,12 +24,7 @@ impl FastmailClient {
         let account_email = Self::get_primary_account_email(&session).await?;
 
         // Parse account ID from session
-        let account_id = session
-            .accounts
-            .first()
-            .ok_or_else(|| anyhow!("No account in session"))?
-            .account_id
-            .clone();
+        let account_id = Self::select_account_id(&session)?;
 
         let inner = JmapClient::new(http_client, session.api_url, account_id);
 
@@ -56,6 +51,27 @@ impl FastmailClient {
         Ok("user@fastmail.com".to_string())
     }
 
+    fn select_account_id(session: &Session) -> Result<String> {
+        if session.accounts.is_empty() {
+            return Err(anyhow!("No account in session"));
+        }
+
+        if let Some((id, _)) = session
+            .accounts
+            .iter()
+            .find(|(_, data)| data.is_personal.unwrap_or(false))
+        {
+            return Ok(id.clone());
+        }
+
+        let (id, _) = session
+            .accounts
+            .iter()
+            .next()
+            .ok_or_else(|| anyhow!("No account in session"))?;
+        Ok(id.clone())
+    }
+
     pub fn account_id(&self) -> &str {
         self.inner.account_id()
     }
@@ -66,8 +82,14 @@ impl FastmailClient {
 
     // Delegate to JmapClient
 
-    pub async fn list_emails(&self, limit: usize) -> Result<Vec<Email>> {
-        let ids = self.inner.email_query(limit).await?;
+    pub async fn list_emails(&self, mailbox: Option<&str>, limit: usize) -> Result<Vec<Email>> {
+        let ids = match mailbox {
+            Some(name) => {
+                let mailbox_id = self.resolve_mailbox_id(name).await?;
+                self.inner.email_query_in_mailbox(&mailbox_id, limit).await?
+            }
+            None => self.inner.email_query(limit).await?,
+        };
         self.inner.email_get(&ids).await
     }
 
@@ -154,6 +176,15 @@ impl FastmailClient {
             )
             .await?;
         Ok(())
+    }
+
+    async fn resolve_mailbox_id(&self, mailbox_name: &str) -> Result<String> {
+        let mailboxes = self.inner.mailbox_get_all().await?;
+        let mailbox = mailboxes
+            .into_iter()
+            .find(|m| m.name == mailbox_name)
+            .ok_or_else(|| anyhow!("Mailbox not found: {}", mailbox_name))?;
+        Ok(mailbox.id)
     }
 }
 

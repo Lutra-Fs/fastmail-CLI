@@ -1,16 +1,20 @@
 // jmap-client/src/types.rs
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// JMAP Email object
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Email {
     pub id: String,
-    pub from: EmailAddress,
-    pub subject: String,
-    #[serde(rename = "receivedAt")]
-    pub received_at: String,
     #[serde(default)]
-    pub preview: String,
+    pub from: Option<Vec<EmailAddress>>,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(rename = "receivedAt")]
+    #[serde(default)]
+    pub received_at: Option<String>,
+    #[serde(default)]
+    pub preview: Option<String>,
     #[serde(rename = "bodyValues")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_values: Option<serde_json::Value>,
@@ -27,6 +31,13 @@ pub struct EmailAddress {
     pub email: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+}
+
+/// JMAP Mailbox object (minimal fields)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Mailbox {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,11 +58,16 @@ pub struct BodyPart {
 pub struct Session {
     #[serde(rename = "apiUrl")]
     pub api_url: String,
-    pub accounts: Vec<AccountData>,
+    pub accounts: HashMap<String, AccountData>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountData {
-    #[serde(rename = "id")]
-    pub account_id: String,
+    pub name: Option<String>,
+    #[serde(rename = "isPersonal")]
+    pub is_personal: Option<bool>,
+    #[serde(rename = "isReadOnly")]
+    pub is_read_only: Option<bool>,
+    #[serde(rename = "accountCapabilities")]
+    pub account_capabilities: Option<HashMap<String, serde_json::Value>>,
 }

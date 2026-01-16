@@ -1,6 +1,6 @@
 // jmap-client/src/client.rs
 use crate::http::HttpClient;
-use crate::types::Email;
+use crate::types::{Email, Mailbox};
 use anyhow::Result;
 use serde_json::json;
 
@@ -102,6 +102,31 @@ impl<C: HttpClient> JmapClient<C> {
         Ok(ids)
     }
 
+    /// List emails in a mailbox by ID with optional limit
+    pub async fn email_query_in_mailbox(&self, mailbox_id: &str, limit: usize) -> Result<Vec<String>> {
+        let params = json!({
+            "accountId": self.account_id,
+            "limit": limit,
+            "filter": { "inMailbox": mailbox_id },
+            "sort": [{"property": "receivedAt", "isAscending": false}]
+        });
+
+        let args = self.call_method("Email/query", params).await?;
+
+        let ids_arr = args
+            .get("ids")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no ids"))?;
+
+        let ids: Vec<String> = ids_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(String::from)
+            .collect();
+
+        Ok(ids)
+    }
+
     /// Get emails by IDs
     pub async fn email_get(&self, ids: &[String]) -> Result<Vec<Email>> {
         if ids.is_empty() {
@@ -147,6 +172,25 @@ impl<C: HttpClient> JmapClient<C> {
 
         self.call_method("Email/set", params).await?;
         Ok(())
+    }
+
+    /// List all mailboxes
+    pub async fn mailbox_get_all(&self) -> Result<Vec<Mailbox>> {
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": null,
+        });
+
+        let args = self.call_method("Mailbox/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid JMAP response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
     }
 }
 
