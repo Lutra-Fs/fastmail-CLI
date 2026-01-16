@@ -17,6 +17,19 @@ async fn load_client() -> Result<FastmailClient> {
     FastmailClient::new(token).await
 }
 
+/// Prompt user for confirmation, returns true if user confirms
+fn confirm(prompt: &str) -> Result<bool> {
+    print!("{} [y/N]: ", prompt);
+    use std::io::Write;
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    Ok(input == "y" || input == "yes")
+}
+
 #[derive(Parser)]
 #[command(name = "fastmail")]
 #[command(about = "A command-line interface for Fastmail", long_about = None)]
@@ -68,12 +81,9 @@ enum MailCommands {
         /// Email ID(s) to delete
         #[arg(required = true)]
         ids: Vec<String>,
-        /// Confirm destructive operation
-        #[arg(long, required = true)]
+        /// Skip confirmation prompt
+        #[arg(long)]
         force: bool,
-        /// Confirm intent (must contain email IDs)
-        #[arg(long, required = true)]
-        confirm: String,
         /// Preview without executing
         #[arg(long)]
         dry_run: bool,
@@ -97,12 +107,9 @@ enum MailboxCommands {
     Delete {
         /// Mailbox ID to delete
         id: String,
-        /// Confirm destructive operation
-        #[arg(long, required = true)]
+        /// Skip confirmation prompt
+        #[arg(long)]
         force: bool,
-        /// Confirm intent (must contain mailbox ID)
-        #[arg(long, required = true)]
-        confirm: String,
         /// Preview without executing
         #[arg(long)]
         dry_run: bool,
@@ -145,7 +152,8 @@ enum MaskedCommands {
     Delete {
         /// Masked email ID or email address
         id: String,
-        #[arg(long, required = true)]
+        /// Skip confirmation prompt
+        #[arg(long)]
         force: bool,
     },
 }
@@ -212,31 +220,25 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
         MailCommands::Delete {
             ids,
             force,
-            confirm,
             dry_run,
         } => {
-            // Safety check: force must be true
-            if !force {
-                let resp = Response::<()>::error(ErrorResponse::safety_rejected(
-                    "--force flag is required for delete operations".to_string()
-                ));
-                print_response(&resp)?;
-                std::process::exit(ExitCode::SafetyRejected.code());
-            }
+            let client = load_client().await?;
 
-            // Safety check: confirm must contain all email IDs
-            for id in &ids {
-                if !confirm.contains(id) {
-                    let resp = Response::<()>::error(ErrorResponse::safety_rejected(format!(
-                        "--confirm must contain email ID '{}'. Use: --confirm 'delete-{}'",
-                        id, id
-                    )));
+            // Prompt for confirmation unless --force is specified
+            if !force && !dry_run {
+                let prompt = if ids.len() == 1 {
+                    format!("Delete email '{}'?", ids[0])
+                } else {
+                    format!("Delete {} emails?", ids.len())
+                };
+                if !confirm(&prompt)? {
+                    let resp = Response::<()>::error(ErrorResponse::safety_rejected(
+                        "Operation cancelled".to_string()
+                    ));
                     print_response(&resp)?;
                     std::process::exit(ExitCode::SafetyRejected.code());
                 }
             }
-
-            let client = load_client().await?;
 
             if dry_run {
                 // Fetch emails that would be deleted
@@ -304,29 +306,21 @@ async fn handle_mailbox(cmd: MailboxCommands) -> Result<()> {
         MailboxCommands::Delete {
             id,
             force,
-            confirm,
             dry_run,
         } => {
-            // Safety check: force must be true
-            if !force {
-                let resp = Response::<()>::error(ErrorResponse::safety_rejected(
-                    "--force flag is required for delete operations".to_string()
-                ));
-                print_response(&resp)?;
-                std::process::exit(ExitCode::SafetyRejected.code());
-            }
-
-            // Safety check: confirm must contain mailbox ID
-            if !confirm.contains(&id) {
-                let resp = Response::<()>::error(ErrorResponse::safety_rejected(format!(
-                    "--confirm must contain mailbox ID '{}'. Use: --confirm '{}'",
-                    id, id
-                )));
-                print_response(&resp)?;
-                std::process::exit(ExitCode::SafetyRejected.code());
-            }
-
             let client = load_client().await?;
+
+            // Prompt for confirmation unless --force is specified
+            if !force && !dry_run {
+                let prompt = format!("Delete mailbox '{}'?", id);
+                if !confirm(&prompt)? {
+                    let resp = Response::<()>::error(ErrorResponse::safety_rejected(
+                        "Operation cancelled".to_string()
+                    ));
+                    print_response(&resp)?;
+                    std::process::exit(ExitCode::SafetyRejected.code());
+                }
+            }
 
             if dry_run {
                 let resp = Response::ok_with_meta(
@@ -423,12 +417,16 @@ async fn handle_masked(cmd: MaskedCommands) -> Result<()> {
             Ok(())
         }
         MaskedCommands::Delete { id, force } => {
+            // Prompt for confirmation unless --force is specified
             if !force {
-                let resp = Response::<()>::error(ErrorResponse::safety_rejected(
-                    "--force flag is required for delete operations".to_string()
-                ));
-                print_response(&resp)?;
-                std::process::exit(ExitCode::SafetyRejected.code());
+                let prompt = format!("Delete masked email '{}'?", id);
+                if !confirm(&prompt)? {
+                    let resp = Response::<()>::error(ErrorResponse::safety_rejected(
+                        "Operation cancelled".to_string()
+                    ));
+                    print_response(&resp)?;
+                    std::process::exit(ExitCode::SafetyRejected.code());
+                }
             }
             client.set_masked_email_state(&id, MaskedEmailState::Deleted).await?;
             let resp = Response::ok(serde_json::json!({"id": id, "state": "deleted"}));
