@@ -4,6 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use fastmail_client::{FastmailClient, MaskedEmailState};
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
+use serde_json::json;
 use std::env;
 
 async fn load_client() -> Result<FastmailClient> {
@@ -28,6 +29,9 @@ enum Commands {
     /// Email operations
     #[command(subcommand)]
     Mail(MailCommands),
+    /// Mailbox operations
+    #[command(subcommand)]
+    Mailbox(MailboxCommands),
     /// Masked email management
     #[command(subcommand)]
     Masked(MaskedCommands),
@@ -61,6 +65,35 @@ enum MailCommands {
         #[arg(long, required = true)]
         force: bool,
         /// Confirm intent (must contain email IDs)
+        #[arg(long, required = true)]
+        confirm: String,
+        /// Preview without executing
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum MailboxCommands {
+    /// List available mailboxes
+    List {
+        /// Filter mailboxes by name pattern (case-insensitive substring match)
+        #[arg(short, long)]
+        filter: Option<String>,
+    },
+    /// Create a new mailbox
+    Create {
+        /// Mailbox name
+        name: String,
+    },
+    /// Delete a mailbox
+    Delete {
+        /// Mailbox ID to delete
+        id: String,
+        /// Confirm destructive operation
+        #[arg(long, required = true)]
+        force: bool,
+        /// Confirm intent (must contain mailbox ID)
         #[arg(long, required = true)]
         confirm: String,
         /// Preview without executing
@@ -133,6 +166,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Mail(cmd) => handle_mail(cmd).await,
+        Commands::Mailbox(cmd) => handle_mailbox(cmd).await,
         Commands::Masked(cmd) => handle_masked(cmd).await,
         Commands::Config(cmd) => handle_config(cmd).await,
     }
@@ -225,6 +259,89 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
                         rate_limit: None,
                         dry_run: Some(false),
                         operation_id: Some(format!("delete-{}", ids.join(","))),
+                    },
+                );
+                print_response(&resp)?;
+                Ok(())
+            }
+        }
+    }
+}
+
+async fn handle_mailbox(cmd: MailboxCommands) -> Result<()> {
+    match cmd {
+        MailboxCommands::List { filter } => {
+            let client = load_client().await?;
+            let mailboxes = client.list_mailboxes(filter.as_deref()).await?;
+
+            let output = json!({
+                "filter": filter,
+                "mailboxes": mailboxes
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+            Ok(())
+        }
+        MailboxCommands::Create { name } => {
+            let client = load_client().await?;
+            let mailbox = client.create_mailbox(&name).await?;
+
+            let resp = Response::ok(mailbox);
+            print_response(&resp)?;
+            Ok(())
+        }
+        MailboxCommands::Delete {
+            id,
+            force,
+            confirm,
+            dry_run,
+        } => {
+            // Safety check: force must be true
+            if !force {
+                let resp = Response::<()>::error(ErrorResponse::safety_rejected(
+                    "--force flag is required for delete operations".to_string()
+                ));
+                print_response(&resp)?;
+                std::process::exit(ExitCode::SafetyRejected.code());
+            }
+
+            // Safety check: confirm must contain mailbox ID
+            if !confirm.contains(&id) {
+                let resp = Response::<()>::error(ErrorResponse::safety_rejected(format!(
+                    "--confirm must contain mailbox ID '{}'. Use: --confirm '{}'",
+                    id, id
+                )));
+                print_response(&resp)?;
+                std::process::exit(ExitCode::SafetyRejected.code());
+            }
+
+            let client = load_client().await?;
+
+            if dry_run {
+                let resp = Response::ok_with_meta(
+                    json!({
+                        "operation": "delete",
+                        "would_delete": id
+                    }),
+                    Meta {
+                        rate_limit: None,
+                        dry_run: Some(true),
+                        operation_id: Some(format!("delete-{}", id)),
+                    },
+                );
+                print_response(&resp)?;
+                Ok(())
+            } else {
+                client.delete_mailbox(&id).await?;
+
+                let resp = Response::ok_with_meta(
+                    json!({
+                        "operation": "delete",
+                        "deleted": id
+                    }),
+                    Meta {
+                        rate_limit: None,
+                        dry_run: Some(false),
+                        operation_id: Some(format!("delete-{}", id)),
                     },
                 );
                 print_response(&resp)?;

@@ -192,6 +192,51 @@ impl<C: HttpClient> JmapClient<C> {
             .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
             .collect()
     }
+
+    /// Create a mailbox
+    pub async fn mailbox_create(&self, name: &str) -> Result<Mailbox> {
+        let params = json!({
+            "accountId": self.account_id,
+            "create": {
+                "new": {
+                    "name": name
+                }
+            }
+        });
+
+        let args = self.call_method("Mailbox/set", params).await?;
+
+        // Check for errors in notCreated
+        if let Some(not_created) = args.get("notCreated") {
+            if let Some(error) = not_created.get("new") {
+                anyhow::bail!("Failed to create mailbox: {}", error);
+            }
+        }
+
+        // Get the created mailbox - extract just the id since Fastmail doesn't return name
+        let id = args
+            .get("created")
+            .and_then(|c| c.get("new"))
+            .and_then(|m| m.get("id"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow::anyhow!("No created mailbox in response"))?;
+
+        Ok(Mailbox {
+            id: id.to_string(),
+            name: name.to_string(),
+        })
+    }
+
+    /// Delete a mailbox by ID
+    pub async fn mailbox_delete(&self, id: &str) -> Result<()> {
+        let params = json!({
+            "accountId": self.account_id,
+            "destroy": [id]
+        });
+
+        self.call_method("Mailbox/set", params).await?;
+        Ok(())
+    }
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {

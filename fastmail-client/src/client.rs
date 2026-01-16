@@ -1,7 +1,7 @@
 // fastmail-client/src/client.rs
 use crate::masked_email::{MaskedEmail, MaskedEmailState};
 use anyhow::{anyhow, Result};
-use jmap_client::{Email, HttpClient, JmapClient, ReqwestClient, Session};
+use jmap_client::{Email, HttpClient, JmapClient, Mailbox, ReqwestClient, Session};
 use serde_json::json;
 
 const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
@@ -185,6 +185,25 @@ impl FastmailClient {
             .find(|m| m.name == mailbox_name)
             .ok_or_else(|| anyhow!("Mailbox not found: {}", mailbox_name))?;
         Ok(mailbox.id)
+    }
+
+    pub async fn list_mailboxes(&self, filter: Option<&str>) -> Result<Vec<Mailbox>> {
+        let mut mailboxes = self.inner.mailbox_get_all().await?;
+
+        if let Some(pattern) = filter {
+            let pattern_lower = pattern.to_lowercase();
+            mailboxes.retain(|m| m.name.to_lowercase().contains(&pattern_lower));
+        }
+
+        Ok(mailboxes)
+    }
+
+    pub async fn create_mailbox(&self, name: &str) -> Result<Mailbox> {
+        self.inner.mailbox_create(name).await
+    }
+
+    pub async fn delete_mailbox(&self, id: &str) -> Result<()> {
+        self.inner.mailbox_delete(id).await
     }
 }
 
