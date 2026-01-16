@@ -82,19 +82,35 @@ pub struct BlobCapability {
     pub max_size: Option<u64>,
 }
 
-/// Blob upload object (RFC 9404)
+/// Blob/upload request object
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BlobUploadObject {
-    #[serde(rename = "data")]
-    pub data: DataSourceObject,
+    pub data: Vec<DataSourceObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub type_: Option<String>,
 }
 
-/// Data source object for blob uploads (RFC 9404)
+/// Data source for blob upload - one of text, base64, or blob reference
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DataSourceObject {
-    #[serde(rename = "type")]
-    pub type_: String,
-    pub value: String,
+#[serde(untagged)]
+pub enum DataSourceObject {
+    AsText {
+        #[serde(rename = "data:asText")]
+        data_as_text: String,
+    },
+    AsBase64 {
+        #[serde(rename = "data:asBase64")]
+        data_as_base64: String,
+    },
+    BlobRef {
+        #[serde(rename = "blobId")]
+        blob_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        offset: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        length: Option<u64>,
+    },
 }
 
 /// Response when a blob is created (RFC 9404)

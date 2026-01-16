@@ -1,22 +1,32 @@
-// Placeholder for blob module - to be implemented in Task 2
-
+// jmap-client/src/blob.rs
 use crate::error::BlobError;
+use crate::types::DataSourceObject;
+use anyhow::Result;
 
-// Temporary empty functions to satisfy the exports in lib.rs
-// These will be properly implemented in Task 2
-
-pub fn encode_base64(_data: &[u8]) -> String {
-    unimplemented!("encode_base64 will be implemented in Task 2")
+/// Encode bytes as base64
+pub fn encode_base64(data: &[u8]) -> String {
+    use base64::prelude::*;
+    BASE64_STANDARD.encode(data)
 }
 
-pub fn decode_base64(_encoded: &str) -> Result<Vec<u8>, BlobError> {
-    unimplemented!("decode_base64 will be implemented in Task 2")
+/// Decode base64 string to bytes
+pub fn decode_base64(s: &str) -> Result<Vec<u8>> {
+    use base64::prelude::*;
+    BASE64_STANDARD
+        .decode(s)
+        .map_err(|e| BlobError::InvalidBase64(e.to_string()).into())
 }
 
-pub fn data_source_from_bytes(_data: &[u8]) -> String {
-    unimplemented!("data_source_from_bytes will be implemented in Task 2")
+/// Create DataSourceObject from raw bytes
+pub fn data_source_from_bytes(bytes: &[u8]) -> DataSourceObject {
+    DataSourceObject::AsBase64 {
+        data_as_base64: encode_base64(bytes),
+    }
 }
 
-pub fn data_source_from_text(_text: &str) -> String {
-    unimplemented!("data_source_from_text will be implemented in Task 2")
+/// Create DataSourceObject from text
+pub fn data_source_from_text(text: &str) -> DataSourceObject {
+    DataSourceObject::AsText {
+        data_as_text: text.to_string(),
+    }
 }
