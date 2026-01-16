@@ -21,7 +21,7 @@ rustls = { version = "0.23", features = ["aws-lc-rs"] }
 atty = "0.2"
 dialoguer = "0.11"
 console = "0.15"
-dirs = "5.0"
+dirs = "6.0"
 
 [dev-dependencies]
 wiremock = "0.6"
