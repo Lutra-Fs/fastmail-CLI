@@ -130,7 +130,7 @@ impl DavClient {
     /// Create a new DAV client from Fastmail config
     ///
     /// This method builds a DAV client for the specified service type.
-    /// It uses the config's account_id and token for authentication.
+    /// It uses the config's email and DAV password for Basic authentication.
     pub async fn from_config(config: &Config, service: DavService) -> Result<Self> {
         let base_url = match service {
             DavService::Calendars => config.get_caldav_url(),
@@ -138,17 +138,14 @@ impl DavClient {
             DavService::Files => config.get_webdav_url(),
         };
 
-        let account_id = config
-            .account_id
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
+        let dav_username = config.get_dav_username()?;
 
         let service_url = match service {
-            DavService::Calendars => format!("{}/dav/calendars/user/{}/", base_url, account_id),
+            DavService::Calendars => format!("{}/dav/calendars/user/{}/", base_url, dav_username),
             DavService::AddressBooks => {
-                format!("{}/dav/addressbooks/user/{}/", base_url, account_id)
+                format!("{}/dav/addressbooks/user/{}/", base_url, dav_username)
             }
-            DavService::Files => format!("{}/files/{}/", base_url, account_id),
+            DavService::Files => format!("{}/files/{}/", base_url, dav_username),
         };
 
         // Create HTTPS connector
@@ -158,9 +155,13 @@ impl DavClient {
             .enable_http1()
             .build();
 
-        // Build HTTP client with bearer token auth
+        // Build HTTP client with DAV Basic auth
+        // DAV endpoints use HTTP Basic Auth with email as username and app password as password
+        let dav_username = config.get_dav_username()?;
+        let dav_password = config.dav_password.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("DAV password not set. Please set FASTMAIL_DAV_PASSWORD environment variable with your Fastmail app password. Generate one at: https://www.fastmail.com/settings/passwords"))?;
         let https_client = Client::builder(TokioExecutor::new()).build(https_connector);
-        let https_client = AddAuthorization::bearer(https_client, &config.token);
+        let https_client = AddAuthorization::basic(https_client, dav_username, dav_password);
 
         // Create libdav client
         let uri = service_url.parse()?;

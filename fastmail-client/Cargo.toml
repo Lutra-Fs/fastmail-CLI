@@ -15,10 +15,11 @@ toml = "0.8"
 # DAV support
 chrono = { version = "0.4", features = ["serde"] }
 hyper = "1.0"
-hyper-rustls = "0.27"
+hyper-rustls = { version = "0.27", features = ["aws-lc-rs"] }
 hyper-util = "0.1"
 libdav = "0.10"
 http = "1.0"
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
 tokio = "1.0"
 tower-http = { version = "0.5", features = ["auth"] }
 tower-service = "0.3"
