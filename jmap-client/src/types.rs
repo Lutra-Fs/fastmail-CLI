@@ -1,6 +1,7 @@
 // jmap-client/src/types.rs
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use chrono::{DateTime, Utc};
 
 /// JMAP Email object
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +208,109 @@ pub struct BlobLookupInfo {
     pub id: String,
     #[serde(rename = "matchedIds")]
     pub matched_ids: std::collections::HashMap<String, Vec<String>>,
+}
+
+// Principal types (RFC 9670)
+
+/// JMAP Principals capability (urn:ietf:params:jmap:principals)
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrincipalsCapability {
+    /// Empty object for session-level capability
+    #[serde(default)]
+    pub _empty: serde_json::Value,
+}
+
+/// Account-level principals capability (urn:ietf:params:jmap:principals)
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrincipalsAccountCapability {
+    /// The id of the Principal that corresponds to the user fetching this object
+    #[serde(rename = "currentUserPrincipalId")]
+    pub current_user_principal_id: Option<String>,
+}
+
+/// Owner capability (urn:ietf:params:jmap:principals:owner)
+#[derive(Debug, Clone, Deserialize)]
+pub struct PrincipalsOwnerCapability {
+    /// The id of an Account with the urn:ietf:params:jmap:principals capability
+    /// that contains the corresponding Principal object
+    #[serde(rename = "accountIdForPrincipal")]
+    pub account_id_for_principal: String,
+    /// The id of the Principal that owns this Account
+    #[serde(rename = "principalId")]
+    pub principal_id: String,
+}
+
+/// Principal type (RFC 9670 Section 5)
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrincipalType {
+    /// A single person
+    Individual,
+    /// A group of other Principals
+    Group,
+    /// A resource (e.g., a projector)
+    Resource,
+    /// A location (e.g., a room)
+    Location,
+    /// Some other undefined Principal
+    Other,
+}
+
+/// JMAP Principal object (RFC 9670)
+#[derive(Debug, Clone, Deserialize)]
+pub struct Principal {
+    /// The id of the Principal
+    pub id: String,
+    /// The type of Principal
+    #[serde(rename = "type")]
+    pub type_: PrincipalType,
+    /// The name of the Principal
+    pub name: String,
+    /// A longer description
+    pub description: Option<String>,
+    /// An email address for the Principal
+    pub email: Option<String>,
+    /// The time zone for this Principal
+    pub time_zone: Option<String>,
+    /// Domain-specific capabilities
+    pub capabilities: std::collections::HashMap<String, serde_json::Value>,
+    /// Map of Account id to Account object for each JMAP Account
+    /// containing data for this Principal that the user has access to
+    pub accounts: Option<std::collections::HashMap<String, AccountData>>,
+}
+
+/// Principal query filter condition (RFC 9670 Section 5.5)
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PrincipalFilterCondition {
+    /// List of Account ids - Principal matches if any are keys in Principal's accounts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_ids: Option<Vec<String>>,
+    /// Email property contains the given string
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    /// Name property contains the given string
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Name, email, or description contains the given string
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Type must match exactly
+    #[serde(rename = "type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub type_: Option<PrincipalType>,
+    /// TimeZone must match exactly
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
+}
+
+/// Principal/query sort option (RFC 9670)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PrincipalSortProperty {
+    Name,
+    Email,
+    Type,
 }
 
 #[cfg(test)]
