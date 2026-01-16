@@ -148,10 +148,10 @@ pub struct BlobUploadResponse {
     #[serde(rename = "accountId")]
     pub account_id: String,
     #[serde(default)]
-    pub created: std::collections::HashMap<String, BlobCreatedInfo>,
+    pub created: HashMap<String, BlobCreatedInfo>,
     #[serde(default)]
     #[serde(rename = "notCreated")]
-    pub not_created: std::collections::HashMap<String, serde_json::Value>,
+    pub not_created: HashMap<String, serde_json::Value>,
 }
 
 /// Response from blob get (RFC 9404)
@@ -166,7 +166,7 @@ pub struct BlobGetResponse {
     pub data_as_base64: Option<String>,
     /// Dynamic digest properties (digest:sha, digest:sha-256, etc.)
     #[serde(flatten)]
-    pub digests: std::collections::HashMap<String, String>,
+    pub digests: HashMap<String, String>,
     #[serde(default)]
     pub size: u64,
     #[serde(rename = "isEncodingProblem")]
@@ -207,7 +207,7 @@ impl BlobGetResponse {
 pub struct BlobLookupInfo {
     pub id: String,
     #[serde(rename = "matchedIds")]
-    pub matched_ids: std::collections::HashMap<String, Vec<String>>,
+    pub matched_ids: HashMap<String, Vec<String>>,
 }
 
 // Principal types (RFC 9670)
@@ -273,10 +273,10 @@ pub struct Principal {
     /// The time zone for this Principal
     pub time_zone: Option<String>,
     /// Domain-specific capabilities
-    pub capabilities: std::collections::HashMap<String, serde_json::Value>,
+    pub capabilities: HashMap<String, serde_json::Value>,
     /// Map of Account id to Account object for each JMAP Account
     /// containing data for this Principal that the user has access to
-    pub accounts: Option<std::collections::HashMap<String, AccountData>>,
+    pub accounts: Option<HashMap<String, AccountData>>,
 }
 
 /// Principal query filter condition (RFC 9670 Section 5.5)
