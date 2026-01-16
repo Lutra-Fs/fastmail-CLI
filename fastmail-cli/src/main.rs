@@ -3,7 +3,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use commands::{handle_contacts, ContactsCommands};
+use commands::{handle_calendar, handle_contacts, CalendarCommands, ContactsCommands};
 use fastmail_client::{FastmailClient, MaskedEmailState};
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
 use serde_json::json;
@@ -56,6 +56,9 @@ enum Commands {
     /// Contacts operations
     #[command(subcommand)]
     Contacts(ContactsCommands),
+    /// Calendar operations
+    #[command(subcommand)]
+    Calendar(CalendarCommands),
     /// Configuration
     #[command(subcommand)]
     Config(ConfigCommands),
@@ -189,6 +192,7 @@ async fn main() -> Result<()> {
         Commands::Blob(cmd) => handle_blob(cmd).await,
         Commands::Masked(cmd) => handle_masked(cmd).await,
         Commands::Contacts(cmd) => handle_contacts(cmd).await,
+        Commands::Calendar(cmd) => handle_calendar(cmd).await,
         Commands::Config(cmd) => handle_config(cmd).await,
     }
 }
