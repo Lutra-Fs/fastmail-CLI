@@ -118,6 +118,44 @@ fastmail files upload ./document.txt /Documents/
 fastmail files download /Documents/report.txt ./report.txt
 ```
 
+## Sharing Operations (JMAP RFC 9670)
+
+Check if your account supports Sharing (Principals):
+
+```sh
+fastmail sharing capability
+```
+
+List all principals (users, groups, resources, locations):
+
+```sh
+fastmail sharing list-principals
+# Filter by name or type
+fastmail sharing list-principals --name "John" --type individual
+```
+
+Get a specific principal:
+
+```sh
+fastmail sharing get-principal <PRINCIPAL_ID>
+```
+
+List share notifications (permission changes):
+
+```sh
+fastmail sharing list-notifications
+# Filter by object type
+fastmail sharing list-notifications --object-type Mailbox
+```
+
+Dismiss share notifications:
+
+```sh
+fastmail sharing dismiss-notifications --ids notification1,notification2,notification3
+```
+
+> **Note:** Fastmail does not currently support the JMAP Sharing Extension (RFC 9670). This implementation exists for compatibility with other JMAP providers that support sharing and collaboration features.
+
 ### Whitelist (for send safety)
 
 ```bash
