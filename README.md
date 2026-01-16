@@ -1,52 +1,71 @@
 # fastmail-cli
 
+[![CI](https://github.com/lutra/fastmail-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/lutra/fastmail-CLI/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/lutra/fastmail-CLI/actions/workflows/codeql.yml/badge.svg)](https://github.com/lutra/fastmail-CLI/actions/workflows/codeql.yml)
+
 A command-line interface for Fastmail, designed for automation and AI agents.
 
 ## Features
 
 - **Email operations**: list, read, delete
 - **Masked Email**: full support for Fastmail's masked email feature
+- **Contacts & Calendar**: CalDAV and CardDAV support
+- **Files**: WebDAV file management
 - **Agent-first**: JSON output, exit codes, and safety mechanisms
 - **Safety-first**: `--force`, `--confirm`, whitelist, and dry-run modes
+- **Interactive setup**: `fastmail setup` for easy credential configuration
 
 ## Installation
 
-```bash
-cargo install --path .
-```
+### From binaries
 
-## Configuration
+Download the latest release for your platform from [GitHub Releases](https://github.com/lutra/fastmail-CLI/releases).
 
-Set your Fastmail API token:
+### From source
 
 ```bash
-export FASTMAIL_TOKEN="your-token-here"
+cargo install --git https://github.com/lutra/fastmail-CLI fastmail-cli
 ```
 
-Get a token at: https://app.fastmail.com/settings/security/integrations
+### From crates.io (coming soon)
+
+```bash
+cargo install fastmail-cli
+```
+
+## Quick Start
+
+### 1. Setup
+
+Run the interactive setup command:
+
+```bash
+fastmail setup
+```
+
+This will prompt you for your Fastmail API token and save it to `~/.config/fastmail-cli/config.toml`.
+
+Get an API token at: https://app.fastmail.com/settings/security/integrations
+
+### 2. Verify installation
+
+```bash
+fastmail mail list --limit 5
+```
 
 ## Usage
 
-### List emails
+### Email operations
 
 ```bash
+# List emails
 fastmail mail list --limit 10
-```
 
-### Read an email
-
-```bash
+# Read an email
 fastmail mail read <email-id>
-```
 
-### Delete emails (with safety checks)
-
-```bash
-# Preview what would be deleted
-fastmail mail delete <id> --force --confirm "delete-<id>" --dry-run
-
-# Actually delete
-fastmail mail delete <id> --force --confirm "delete-<id>"
+# Delete emails (with safety checks)
+fastmail mail delete <id> --force
 ```
 
 ### Masked emails
@@ -66,17 +85,74 @@ fastmail masked disable <id>
 fastmail masked delete <id> --force
 ```
 
+### Contacts (CardDAV)
+
+```bash
+# List all contacts
+fastmail contacts list
+
+# Create a contact
+fastmail contacts create "John Doe" --email "john@example.com"
+```
+
+### Calendar (CalDAV)
+
+```bash
+# List calendars
+fastmail calendar list
+
+# List events
+fastmail calendar list-events <calendar-id>
+```
+
+### Files (WebDAV)
+
+```bash
+# List files
+fastmail files list
+
+# Upload a file
+fastmail files upload ./document.txt /Documents/
+
+# Download a file
+fastmail files download /Documents/report.txt ./report.txt
+```
+
 ### Whitelist (for send safety)
 
 ```bash
 fastmail config allow-recipient add team@company.com
 fastmail config allow-recipient list
-fastmail config allow-recipient remove team@company.com
+fastmail config allow-remove remove team@company.com
 ```
+
+## Configuration
+
+Credentials are stored in `~/.config/fastmail-cli/config.toml`:
+
+```toml
+[auth]
+token = "your-api-token"
+
+[dav]
+caldav_url = "https://caldav.fastmail.com/"
+carddav_url = "https://carddav.fastmail.com/"
+webdav_url = "https://www.fastmail.com/"
+```
+
+You can also set the `FASTMAIL_TOKEN` environment variable as an alternative.
+
+For CalDAV/CardDAV operations, you need an app password:
+
+```bash
+export FASTMAIL_DAV_PASSWORD="your-app-password"
+```
+
+Generate an app password at: https://www.fastmail.com/settings/passwords
 
 ## Output Format
 
-All commands output JSON:
+Commands output JSON by default:
 
 ```json
 {
@@ -91,6 +167,16 @@ All commands output JSON:
 }
 ```
 
+You can force a specific output format:
+
+```bash
+# Force JSON (even in terminal)
+fastmail mail list --output json
+
+# Force human-readable (even when piped)
+fastmail mail list --output human
+```
+
 ## Exit Codes
 
 - `0`: Success
@@ -100,33 +186,22 @@ All commands output JSON:
 
 ## Blob Operations (JMAP RFC 9404)
 
-Check if your account supports Blob operations:
+**Note:** Fastmail does not currently support the JMAP Blob extension. The blob commands below are included for compatibility with other JMAP providers, but will not work with Fastmail accounts.
 
-```sh
+```bash
+# Check if your account supports Blob operations
 fastmail blob capability
-```
 
-Upload a file as a blob:
-
-```sh
+# Upload a file as a blob
 fastmail blob upload document.pdf --type application/pdf
-```
 
-Download blob content:
-
-```sh
+# Download blob content
 fastmail blob download <BLOB_ID> output.pdf
-```
 
-Get blob metadata:
-
-```sh
+# Get blob metadata
 fastmail blob info <BLOB_ID>
-```
 
-Look up which objects reference a blob:
-
-```sh
+# Look up which objects reference a blob
 fastmail blob lookup <BLOB_ID> --types Email --types Mailbox
 ```
 
