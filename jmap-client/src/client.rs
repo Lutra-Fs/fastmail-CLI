@@ -462,6 +462,38 @@ impl<C: HttpClient> JmapClient<C> {
         Ok(created.1.id)
     }
 
+    /// Get Principals via Principal/get (RFC 9670)
+    pub async fn principal_get(
+        &self,
+        ids: &[String],
+        properties: Option<Vec<String>>,
+    ) -> Result<Vec<Principal>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut params = json!({
+            "accountId": self.account_id,
+            "ids": ids,
+        });
+
+        if let Some(props) = properties {
+            params["properties"] = json!(props);
+        }
+
+        let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Principal/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Principal/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
