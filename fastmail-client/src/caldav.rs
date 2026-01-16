@@ -8,9 +8,7 @@ use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use libdav::caldav::{
-    CreateCalendar, FindCalendars, GetCalendarResources, CalendarComponent,
-};
+use libdav::caldav::{CreateCalendar, FindCalendars, GetCalendarResources, CalendarComponent};
 use libdav::dav::{Delete, FoundCollection, PutResource, WebDavClient};
 use libdav::FetchedResource;
 use serde::{Deserialize, Serialize};
@@ -46,10 +44,6 @@ pub struct Calendar {
     pub description: Option<String>,
     /// Color for the calendar (hex format)
     pub color: Option<String>,
-    /// ETag for the calendar resource
-    pub etag: Option<String>,
-    /// Whether the calendar supports sync operations
-    pub supports_sync: bool,
 }
 
 impl From<FoundCollection> for Calendar {
@@ -59,8 +53,6 @@ impl From<FoundCollection> for Calendar {
             display_name: None, // Would require additional PROPFIND
             description: None,
             color: None,
-            etag: collection.etag,
-            supports_sync: collection.supports_sync,
         }
     }
 }
@@ -70,7 +62,7 @@ impl From<FoundCollection> for Calendar {
 /// Wraps the libdav CalDavClient with a simplified API specific to Fastmail.
 pub struct CalDavClient {
     /// The underlying libdav CalDavClient (boxed to hide complex generics)
-    client: Box<dyn CalDavClientInner>,
+    caldav: Box<dyn CalDavClientInner>,
     /// Base URL for CalDAV operations
     base_url: String,
 }
@@ -83,8 +75,6 @@ trait CalDavClientInner: Send + Sync {
     async fn delete_resource(&self, href: &str) -> Result<()>;
     async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>>;
     async fn create_calendar(&self, href: &str, display_name: &str) -> Result<()>;
-    async fn get_property(&self, href: &str, property: &libdav::PropertyName<'_, '_>) -> Result<Option<String>>;
-    fn clone_client(&self) -> Box<dyn CalDavClientInner>;
 }
 
 /// Concrete implementation of CalDavClientInner
@@ -95,23 +85,6 @@ where
     C::Future: Send + 'static,
 {
     client: libdav::CalDavClient<C>,
-}
-
-impl<C> Clone for CalDavClientInnerImpl<C>
-where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
-        + Send
-        + Sync
-        + Clone
-        + 'static,
-    C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
-    C::Future: Send + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-        }
-    }
 }
 
 #[async_trait::async_trait]
@@ -155,15 +128,6 @@ where
         self.client.request(create_calendar).await?;
         Ok(())
     }
-
-    async fn get_property(&self, href: &str, property: &libdav::PropertyName<'_, '_>) -> Result<Option<String>> {
-        let response = self.client.request(libdav::dav::GetProperty::new(href, property)).await?;
-        Ok(response.value)
-    }
-
-    fn clone_client(&self) -> Box<dyn CalDavClientInner> {
-        Box::new(self.clone())
-    }
 }
 
 impl CalDavClient {
@@ -196,7 +160,7 @@ impl CalDavClient {
         let inner: Box<dyn CalDavClientInner> = Box::new(CalDavClientInnerImpl { client });
 
         Ok(Self {
-            client: inner,
+            caldav: inner,
             base_url: service_url,
         })
     }
@@ -204,35 +168,18 @@ impl CalDavClient {
     /// List all calendars for the user
     pub async fn list_calendars(&self) -> Result<Vec<Calendar>> {
         let home_set: Uri = self.base_url.parse()?;
-        let collections = self.client.find_calendars(&home_set).await?;
+        let collections = self.caldav.find_calendars(&home_set).await?;
 
         Ok(collections.into_iter().map(Calendar::from).collect())
     }
 
     /// Get a specific calendar by href
     pub async fn get_calendar(&self, href: &str) -> Result<Calendar> {
-        // Use FindCollections with the specific href
-        let uri: Uri = if href.starts_with("http") {
-            href.parse()?
-        } else {
-            format!("{}{}", self.base_url.trim_end_matches('/'), href).parse()?
-        };
+        let calendars = self.list_calendars().await?;
 
-        let parent = uri
-            .path()
-            .rsplit('/')
-            .skip(1)
-            .next()
-            .unwrap_or("");
-
-        let home_set: Uri = format!("{}{}/", self.base_url.trim_end_matches('/'), parent).parse()?;
-
-        let collections = self.client.find_calendars(&home_set).await?;
-
-        collections
+        calendars
             .into_iter()
             .find(|c| c.href == href || c.href.ends_with(href))
-            .map(Calendar::from)
             .ok_or_else(|| anyhow!("Calendar not found: {}", href))
     }
 
@@ -240,26 +187,24 @@ impl CalDavClient {
     pub async fn create_calendar(&self, name: &str, description: Option<String>) -> Result<Calendar> {
         let href = format!("{}{}/", self.base_url.trim_end_matches('/'), name);
 
-        self.client.create_calendar(&href, name).await?;
+        self.caldav.create_calendar(&href, name).await?;
 
         Ok(Calendar {
             href: href.clone(),
             display_name: Some(name.to_string()),
             description,
             color: None,
-            etag: None,
-            supports_sync: false,
         })
     }
 
     /// Delete a calendar
     pub async fn delete_calendar(&self, href: &str) -> Result<()> {
-        self.client.delete_resource(href).await
+        self.caldav.delete_resource(href).await
     }
 
     /// List all events in a calendar
     pub async fn list_events(&self, calendar_href: &str) -> Result<Vec<CalendarEvent>> {
-        let resources = self.client.get_calendar_resources(calendar_href).await?;
+        let resources = self.caldav.get_calendar_resources(calendar_href).await?;
 
         let mut events = Vec::new();
         for resource in resources {
@@ -275,7 +220,7 @@ impl CalDavClient {
 
     /// Get a specific event by href
     pub async fn get_event(&self, event_href: &str) -> Result<CalendarEvent> {
-        let resources = self.client.get_calendar_resources(event_href).await?;
+        let resources = self.caldav.get_calendar_resources(event_href).await?;
 
         resources
             .into_iter()
@@ -287,12 +232,12 @@ impl CalDavClient {
 
     /// Create or update an event in a calendar
     pub async fn put_event(&self, calendar_href: &str, event: &CalendarEvent) -> Result<String> {
-        // Generate href from UID if not present
+        // Generate href from UID
         let event_href = format!("{}/{}.ics", calendar_href.trim_end_matches('/'), event.uid);
         let icalendar = Self::serialize_icalendar_event(event)?;
 
         let etag = self
-            .client
+            .caldav
             .put_resource(&event_href, icalendar, "text/calendar")
             .await?;
 
@@ -301,7 +246,7 @@ impl CalDavClient {
 
     /// Delete an event
     pub async fn delete_event(&self, event_href: &str) -> Result<()> {
-        self.client.delete_resource(event_href).await
+        self.caldav.delete_resource(event_href).await
     }
 
     /// Parse an iCalendar VEVENT from bytes (simplified MVP implementation)
