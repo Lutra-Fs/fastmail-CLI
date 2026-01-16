@@ -184,26 +184,26 @@ fastmail mail list --output human
 - `2`: Permanent error (do not retry)
 - `3`: Safety check failed (operation rejected)
 
-## Blob Operations (JMAP RFC 9404)
+## Blob Operations
 
-**Note:** Fastmail does not currently support the JMAP Blob extension. The blob commands below are included for compatibility with other JMAP providers, but will not work with Fastmail accounts.
+**Note:** The `fastmail blob` commands below use the JMAP Blob Management Extension (RFC 9404), which is **not supported by Fastmail**.
+
+Fastmail does support RFC 8620 upload/download URLs internally (used for email attachments), but the CLI blob commands are not currently implemented to use those URLs.
+
+### Not Available on Fastmail
+
+All blob commands below require RFC 9404 support and **will not work** with Fastmail accounts:
 
 ```bash
-# Check if your account supports Blob operations
-fastmail blob capability
-
-# Upload a file as a blob
+# These commands are NOT available on Fastmail:
 fastmail blob upload document.pdf --type application/pdf
-
-# Download blob content
 fastmail blob download <BLOB_ID> output.pdf
-
-# Get blob metadata
 fastmail blob info <BLOB_ID>
-
-# Look up which objects reference a blob
 fastmail blob lookup <BLOB_ID> --types Email --types Mailbox
+fastmail blob capability
 ```
+
+These commands are included for compatibility with other JMAP providers that support RFC 9404.
 
 ## License
 
