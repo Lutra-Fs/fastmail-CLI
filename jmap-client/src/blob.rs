@@ -1,5 +1,7 @@
 // Placeholder for blob module - to be implemented in Task 2
 
+use crate::error::BlobError;
+
 // Temporary empty functions to satisfy the exports in lib.rs
 // These will be properly implemented in Task 2
 
@@ -7,7 +9,7 @@ pub fn encode_base64(_data: &[u8]) -> String {
     unimplemented!("encode_base64 will be implemented in Task 2")
 }
 
-pub fn decode_base64(_encoded: &str) -> Result<Vec<u8>, String> {
+pub fn decode_base64(_encoded: &str) -> Result<Vec<u8>, BlobError> {
     unimplemented!("decode_base64 will be implemented in Task 2")
 }
 
