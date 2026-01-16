@@ -594,6 +594,55 @@ impl<C: HttpClient> JmapClient<C> {
             .collect()
     }
 
+    /// Query ShareNotifications via ShareNotification/query (RFC 9670)
+    pub async fn share_notification_query(
+        &self,
+        filter: Option<ShareNotificationFilterCondition>,
+        sort: Option<Vec<serde_json::Value>>,
+        limit: Option<usize>,
+    ) -> Result<Vec<String>> {
+        let mut params = json!({
+            "accountId": self.account_id,
+        });
+
+        if let Some(f) = filter {
+            params["filter"] = serde_json::to_value(f)?;
+        }
+        if let Some(s) = sort {
+            params["sort"] = json!(s);
+        }
+        if let Some(l) = limit {
+            params["limit"] = json!(l);
+        }
+
+        let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
+        let args = self.call_method_with_using(&using, "ShareNotification/query", params).await?;
+
+        let ids_arr = args
+            .get("ids")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid ShareNotification/query response: no ids"))?;
+
+        let ids: Vec<String> = ids_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(String::from)
+            .collect();
+
+        Ok(ids)
+    }
+
+    /// Query ShareNotifications and fetch full objects
+    pub async fn share_notification_query_and_get(
+        &self,
+        filter: Option<ShareNotificationFilterCondition>,
+        sort: Option<Vec<serde_json::Value>>,
+        limit: Option<usize>,
+    ) -> Result<Vec<ShareNotification>> {
+        let ids = self.share_notification_query(filter, sort, limit).await?;
+        self.share_notification_get(&ids, None).await
+    }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
