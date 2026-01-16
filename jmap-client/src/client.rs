@@ -543,6 +543,25 @@ impl<C: HttpClient> JmapClient<C> {
         self.principal_get(&ids, None).await
     }
 
+    /// Get Principal changes via Principal/changes (RFC 9670)
+    pub async fn principal_changes(
+        &self,
+        since_state: String,
+        max_changes: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
+        self.call_method_with_using(&using, "Principal/changes", params).await
+    }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
