@@ -11,10 +11,15 @@ pub use error::BlobError;
 pub use http::{HttpClient, HttpError};
 pub use types::{
     Email, EmailAddress, Mailbox, BodyPart, Session, AccountData,
-    // Blob types (to be added in later tasks)
+    // Blob types
     BlobCapability, BlobUploadObject, DataSourceObject,
     BlobCreatedInfo, BlobUploadResponse,
     BlobGetResponse, BlobLookupInfo,
+    // Sharing types (RFC 9670)
+    Principal, PrincipalType, PrincipalFilterCondition, PrincipalSortProperty,
+    ShareNotification, Entity,
+    ShareNotificationFilterCondition, ShareNotificationSortProperty,
+    PrincipalsCapability, PrincipalsAccountCapability, PrincipalsOwnerCapability,
 };
 
 // Re-export reqwest client when feature is enabled
