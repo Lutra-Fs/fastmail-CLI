@@ -35,6 +35,39 @@ impl<C: HttpClient> JmapClient<C> {
         &self.account_id
     }
 
+    /// Perform a raw HTTP GET request (for RFC 8620 downloadUrl)
+    pub async fn http_get(&self, url: &str) -> Result<Vec<u8>> {
+        self.http.get(url, vec![]).await
+            .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))
+    }
+
+    /// Perform a raw HTTP POST request (for RFC 8620 uploadUrl)
+    pub async fn http_post(&self, url: &str, data: Vec<u8>, content_type: &str) -> Result<Vec<u8>> {
+        self.http.post_binary(url, data, content_type).await
+            .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))
+    }
+
+    /// Upload binary data using RFC 8620 uploadUrl
+    /// Returns the blobId
+    pub async fn upload_blob(&self, data: &[u8], type_: &str) -> Result<String> {
+        // This would require upload_url from Session, which we don't have here
+        // For now, this is a placeholder - the actual implementation should be in the client
+        // that has access to the Session object
+        Err(anyhow::anyhow!("upload_blob requires Session upload_url - implement in client layer"))
+    }
+
+    /// Download binary data using RFC 8620 downloadUrl
+    /// Returns UTF-8 string (replaces invalid sequences)
+    pub async fn download_blob(&self, url: &str) -> Result<String> {
+        let bytes = self.http_get(url).await?;
+        Ok(String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    /// Download binary data as raw bytes
+    pub async fn download_blob_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        self.http_get(url).await
+    }
+
     pub async fn call_method(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY];
         self.call_method_with_using(&using, method, params).await
@@ -159,6 +192,17 @@ impl<C: HttpClient> JmapClient<C> {
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("Email not found: {}", id))
+    }
+
+    /// Get a single email by ID with body values (fetches actual email body content)
+    pub async fn get_email_with_body(&self, id: &str) -> Result<Email> {
+        // First get the email to find out what body parts exist
+        let email = self.get_email(id).await?;
+
+        // Note: Standard JMAP servers would populate bodyValues via Email/get
+        // This base implementation just returns the email without body values
+        // Subclasses like FastmailClient should override this to fetch via downloadUrl
+        Ok(email)
     }
 
     /// Delete emails by IDs
@@ -411,6 +455,7 @@ impl<C: HttpClient> JmapClient<C> {
 
         Ok(created.1.id)
     }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {

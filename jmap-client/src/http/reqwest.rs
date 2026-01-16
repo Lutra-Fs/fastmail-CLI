@@ -103,4 +103,49 @@ impl HttpClient for ReqwestClient {
 
         Ok(bytes)
     }
+
+    async fn post_binary(
+        &self,
+        url: &str,
+        data: Vec<u8>,
+        content_type: &str,
+    ) -> Result<Vec<u8>, HttpError> {
+        let mut req = self.inner.post(url);
+
+        if let Some(token) = &self.bearer_token {
+            req = req.bearer_auth(token);
+        }
+
+        let resp = req
+            .header("content-type", content_type)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| HttpError {
+                status: None,
+                message: e.to_string(),
+            })?;
+
+        let status = resp.status();
+        let is_success = status.is_success();
+        let status_code = status.as_u16();
+
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| HttpError {
+                status: Some(status_code),
+                message: e.to_string(),
+            })?
+            .to_vec();
+
+        if !is_success {
+            return Err(HttpError {
+                status: Some(status_code),
+                message: String::from_utf8_lossy(&bytes).to_string(),
+            });
+        }
+
+        Ok(bytes)
+    }
 }

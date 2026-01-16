@@ -26,6 +26,15 @@ pub trait HttpClient: Send + Sync {
     /// POST JSON data to URL, return response bytes
     async fn post_json(&self, url: &str, body: Vec<u8>) -> Result<Vec<u8>, HttpError>;
 
+    /// POST binary data to URL with custom Content-Type, return response bytes
+    async fn post_binary(&self, url: &str, data: Vec<u8>, content_type: &str) -> Result<Vec<u8>, HttpError> {
+        // Default implementation: override in actual client
+        Err(HttpError {
+            status: None,
+            message: "post_binary not implemented".to_string(),
+        })
+    }
+
     /// GET request for session (default implementation uses POST)
     async fn get(&self, url: &str, body: Vec<u8>) -> Result<Vec<u8>, HttpError> {
         self.post_json(url, body).await

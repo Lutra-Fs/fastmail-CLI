@@ -59,6 +59,9 @@ enum MailCommands {
     Read {
         /// Email ID
         id: String,
+        /// Include email body content
+        #[arg(short, long)]
+        body: bool,
     },
     /// Delete emails
     Delete {
@@ -194,9 +197,13 @@ async fn handle_mail(cmd: MailCommands) -> Result<()> {
             print_response(&resp)?;
             Ok(())
         }
-        MailCommands::Read { id } => {
+        MailCommands::Read { id, body } => {
             let client = load_client().await?;
-            let email = client.get_email(&id).await?;
+            let email = if body {
+                client.get_email_with_body(&id).await?
+            } else {
+                client.get_email(&id).await?
+            };
 
             let resp = Response::ok(email);
             print_response(&resp)?;

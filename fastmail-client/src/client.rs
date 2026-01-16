@@ -99,6 +99,116 @@ impl FastmailClient {
         self.inner.get_email(id).await
     }
 
+    /// Get email with body content included (Fastmail-specific implementation using RFC 8620 downloadUrl)
+    pub async fn get_email_with_body(&self, id: &str) -> Result<Email> {
+        // First get the email to find out what body parts exist
+        let email = self.inner.get_email(id).await?;
+
+        // Download the body content using RFC 8620 downloadUrl if available
+        let body_values = if self.session.download_url.is_none() && self.session.upload_url.is_none() {
+            None
+        } else {
+            let mut body_obj = serde_json::Map::new();
+
+            // Download HTML body parts
+            if let Some(html_body) = &email.html_body {
+                for part in html_body {
+                    if let Some(blob_id) = &part.blob_id {
+                        let url = self.construct_download_url(blob_id, &part.type_);
+                        let content = self.inner.download_blob(&url).await?;
+
+                        let value_obj = json!({
+                            "value": content,
+                            "isEncodingProblem": false,
+                            "isTruncated": false
+                        });
+                        body_obj.insert(part.part_id.clone(), value_obj);
+                    }
+                }
+            }
+
+            // Download text body parts
+            if let Some(text_body) = &email.text_body {
+                for part in text_body {
+                    if let Some(blob_id) = &part.blob_id {
+                        let url = self.construct_download_url(blob_id, &part.type_);
+                        let content = self.inner.download_blob(&url).await?;
+
+                        let value_obj = json!({
+                            "value": content,
+                            "isEncodingProblem": false,
+                            "isTruncated": false
+                        });
+                        body_obj.insert(part.part_id.clone(), value_obj);
+                    }
+                }
+            }
+
+            if body_obj.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::Object(body_obj))
+            }
+        };
+
+        Ok(Email {
+            body_values,
+            ..email
+        })
+    }
+
+    /// Construct download URL from RFC 8620 downloadUrl template
+    fn construct_download_url(&self, blob_id: &str, type_: &str) -> String {
+        if let Some(download_url) = &self.session.download_url {
+            download_url
+                .replace("{accountId}", self.inner.account_id())
+                .replace("{blobId}", blob_id)
+                .replace("{name}", "email")
+                .replace("{type}", type_)
+        } else {
+            // Fallback: construct URL directly (Fastmail-specific)
+            format!(
+                "https://www.fastmailusercontent.com/jmap/download/{}/{}?type={}",
+                self.inner.account_id(),
+                blob_id,
+                type_
+            )
+        }
+    }
+
+    /// Upload binary data using RFC 8620 uploadUrl
+    /// Returns the blobId
+    pub async fn upload_blob(&self, data: &[u8], type_: &str) -> Result<String> {
+        let upload_url = self.session.upload_url.as_ref()
+            .ok_or_else(|| anyhow!("No uploadUrl in session"))?;
+
+        let url = upload_url.replace("{accountId}", self.inner.account_id());
+
+        // RFC 8620 says: POST with the file data as the body
+        let resp_bytes = self.inner.http_post(&url, data.to_vec(), type_).await?;
+
+        // Parse response to get blobId
+        // Format: { "blobId": "xxx", "size": yyy }
+        let resp: serde_json::Value = serde_json::from_slice(&resp_bytes)?;
+        let blob_id = resp.get("blobId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("No blobId in upload response"))?;
+
+        Ok(blob_id.to_string())
+    }
+
+    /// Download a blob using RFC 8620 downloadUrl (private helper)
+    async fn download_blob(&self, blob_id: &str, type_: &str) -> Result<String> {
+        let url = self.construct_download_url(blob_id, type_);
+        self.inner.download_blob(&url).await
+    }
+
+    /// Download a blob as bytes using RFC 8620 downloadUrl (private helper)
+    async fn download_blob_bytes(&self, blob_id: &str, type_: &str) -> Result<Vec<u8>> {
+        let url = self.construct_download_url(blob_id, type_);
+        self.inner.download_blob_bytes(&url).await
+    }
+
     pub async fn delete_emails(&self, ids: Vec<String>) -> Result<()> {
         self.inner.email_delete(&ids).await
     }

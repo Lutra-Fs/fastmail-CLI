@@ -53,11 +53,25 @@ pub struct BodyPart {
     pub type_: String,
 }
 
-/// JMAP Session response
+/// JMAP Session response (RFC 8620 Section 2)
 #[derive(Debug, Deserialize)]
 pub struct Session {
+    /// The URL to use for JMAP API requests
     #[serde(rename = "apiUrl")]
     pub api_url: String,
+    /// Download URL template for binary data
+    #[serde(default)]
+    #[serde(rename = "downloadUrl")]
+    pub download_url: Option<String>,
+    /// Upload URL template for files
+    #[serde(default)]
+    #[serde(rename = "uploadUrl")]
+    pub upload_url: Option<String>,
+    /// Event source URL for push notifications
+    #[serde(default)]
+    #[serde(rename = "eventSourceUrl")]
+    pub event_source_url: Option<String>,
+    /// The accounts available to the user
     pub accounts: HashMap<String, AccountData>,
 }
 
