@@ -643,6 +643,25 @@ impl<C: HttpClient> JmapClient<C> {
         self.share_notification_get(&ids, None).await
     }
 
+    /// Get ShareNotification changes via ShareNotification/changes (RFC 9670)
+    pub async fn share_notification_changes(
+        &self,
+        since_state: String,
+        max_changes: Option<usize>,
+    ) -> Result<serde_json::Value> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
+        self.call_method_with_using(&using, "ShareNotification/changes", params).await
+    }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
