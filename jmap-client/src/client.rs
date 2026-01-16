@@ -239,6 +239,178 @@ impl<C: HttpClient> JmapClient<C> {
         self.call_method("Mailbox/set", params).await?;
         Ok(())
     }
+
+    /// Upload blobs via Blob/upload
+    pub async fn blob_upload(
+        &self,
+        create: std::collections::HashMap<String, BlobUploadObject>,
+    ) -> Result<BlobUploadResponse> {
+        let params = json!({
+            "accountId": self.account_id,
+            "create": create,
+        });
+
+        let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Blob/upload", params).await?;
+
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    /// Get blob data via Blob/get
+    pub async fn blob_get(
+        &self,
+        ids: &[String],
+        properties: Option<Vec<String>>,
+        offset: Option<u64>,
+        length: Option<u64>,
+    ) -> Result<Vec<BlobGetResponse>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut params = json!({
+            "accountId": self.account_id,
+            "ids": ids,
+        });
+
+        if let Some(props) = properties {
+            params["properties"] = json!(props);
+        }
+        if let Some(off) = offset {
+            params["offset"] = json!(off);
+        }
+        if let Some(len) = length {
+            params["length"] = json!(len);
+        }
+
+        let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Blob/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Blob/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Look up blob references via Blob/lookup
+    pub async fn blob_lookup(
+        &self,
+        ids: &[String],
+        type_names: &[String],
+    ) -> Result<Vec<BlobLookupInfo>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": ids,
+            "typeNames": type_names,
+        });
+
+        let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Blob/lookup", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Blob/lookup response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Get blob as text (returns error if not valid UTF-8)
+    pub async fn blob_get_as_text(&self, id: &str) -> Result<String> {
+        let results = self.blob_get(&[id.to_string()], None, None, None).await?;
+        let result = results
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Blob not found"))?;
+
+        if result.is_encoding_problem {
+            anyhow::bail!("Blob data is not valid UTF-8");
+        }
+
+        result.as_text()
+    }
+
+    /// Get blob as base64
+    pub async fn blob_get_as_base64(&self, id: &str) -> Result<String> {
+        let results = self
+            .blob_get(
+                &[id.to_string()],
+                Some(vec!["data:asBase64".to_string(), "size".to_string()]),
+                None,
+                None,
+            )
+            .await?;
+
+        let result = results
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Blob not found"))?;
+
+        result.data_as_base64
+            .ok_or_else(|| anyhow::anyhow!("No base64 data in response"))
+    }
+
+    /// Get blob as raw bytes
+    pub async fn blob_get_bytes(&self, id: &str) -> Result<Vec<u8>> {
+        let results = self.blob_get(&[id.to_string()], None, None, None).await?;
+        let result = results
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Blob not found"))?;
+        result.as_bytes()
+    }
+
+    /// Upload text as a blob
+    pub async fn blob_upload_text(&self, text: &str, type_: Option<&str>) -> Result<String> {
+        let mut create = std::collections::HashMap::new();
+        create.insert(
+            "single".to_string(),
+            BlobUploadObject {
+                data: vec![blob::data_source_from_text(text)],
+                type_: type_.map(|s| s.to_string()),
+            },
+        );
+
+        let response = self.blob_upload(create).await?;
+        let created = response
+            .created
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Upload failed"))?;
+
+        Ok(created.1.id)
+    }
+
+    /// Upload raw bytes as a blob
+    pub async fn blob_upload_bytes(&self, bytes: &[u8], type_: Option<&str>) -> Result<String> {
+        let mut create = std::collections::HashMap::new();
+        create.insert(
+            "single".to_string(),
+            BlobUploadObject {
+                data: vec![blob::data_source_from_bytes(bytes)],
+                type_: type_.map(|s| s.to_string()),
+            },
+        );
+
+        let response = self.blob_upload(create).await?;
+        let created = response
+            .created
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Upload failed"))?;
+
+        Ok(created.1.id)
+    }
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
