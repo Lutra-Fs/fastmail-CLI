@@ -221,7 +221,7 @@ pub struct PrincipalsCapability {
 }
 
 /// Account-level principals capability (urn:ietf:params:jmap:principals)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PrincipalsAccountCapability {
     /// The id of the Principal that corresponds to the user fetching this object
     #[serde(rename = "currentUserPrincipalId")]
@@ -229,7 +229,7 @@ pub struct PrincipalsAccountCapability {
 }
 
 /// Owner capability (urn:ietf:params:jmap:principals:owner)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PrincipalsOwnerCapability {
     /// The id of an Account with the urn:ietf:params:jmap:principals capability
     /// that contains the corresponding Principal object
@@ -257,7 +257,7 @@ pub enum PrincipalType {
 }
 
 /// JMAP Principal object (RFC 9670)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Principal {
     /// The id of the Principal
     pub id: String,
@@ -316,7 +316,7 @@ pub enum PrincipalSortProperty {
 // ShareNotification types (RFC 9670)
 
 /// Entity that made a change (RFC 9670 Section 6)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entity {
     /// The name of the entity who made the change
@@ -329,7 +329,7 @@ pub struct Entity {
 }
 
 /// ShareNotification object (RFC 9670 Section 6)
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ShareNotification {
     /// The id of the ShareNotification
     pub id: String,

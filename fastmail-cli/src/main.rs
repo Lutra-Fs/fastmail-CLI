@@ -3,7 +3,7 @@ mod output;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use commands::{handle_calendar, handle_contacts, handle_files, run_setup, CalendarCommands, ContactsCommands, FilesCommands};
+use commands::{handle_calendar, handle_contacts, handle_files, run_setup, CalendarCommands, ContactsCommands, FilesCommands, SharingCommands};
 use fastmail_client::{FastmailClient, MaskedEmailState};
 use output::{print_response, ErrorResponse, ExitCode, Meta, Response};
 use serde_json::json;
@@ -75,6 +75,9 @@ enum Commands {
     /// Files operations
     #[command(subcommand)]
     Files(FilesCommands),
+    /// Sharing operations (JMAP RFC 9670)
+    #[command(subcommand)]
+    Sharing(SharingCommands),
     /// Configuration
     #[command(subcommand)]
     Config(ConfigCommands),
@@ -217,6 +220,7 @@ async fn main() -> Result<()> {
         Commands::Contacts(cmd) => handle_contacts(cmd).await,
         Commands::Calendar(cmd) => handle_calendar(cmd).await,
         Commands::Files(cmd) => handle_files(cmd).await,
+        Commands::Sharing(cmd) => handle_sharing(cmd).await,
         Commands::Config(cmd) => handle_config(cmd).await,
         Commands::Setup => {
             let exit_code = run_setup().await?;
@@ -511,4 +515,9 @@ async fn handle_config(cmd: ConfigCommands) -> Result<()> {
 async fn handle_blob(cmd: commands::blob::BlobCommands) -> Result<()> {
     let client = load_client().await?;
     commands::blob::handle_blob_command(&client, cmd).await
+}
+
+async fn handle_sharing(cmd: commands::sharing::SharingCommands) -> Result<()> {
+    let client = load_client().await?;
+    commands::sharing::handle_sharing_command(&client, cmd).await
 }
