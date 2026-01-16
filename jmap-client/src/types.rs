@@ -313,6 +313,77 @@ pub enum PrincipalSortProperty {
     Type,
 }
 
+// ShareNotification types (RFC 9670)
+
+/// Entity that made a change (RFC 9670 Section 6)
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Entity {
+    /// The name of the entity who made the change
+    pub name: String,
+    /// The email of the entity who made the change
+    pub email: Option<String>,
+    /// The id of the Principal corresponding to the entity
+    #[serde(rename = "principalId")]
+    pub principal_id: Option<String>,
+}
+
+/// ShareNotification object (RFC 9670 Section 6)
+#[derive(Debug, Clone, Deserialize)]
+pub struct ShareNotification {
+    /// The id of the ShareNotification
+    pub id: String,
+    /// The time this notification was created
+    pub created: DateTime<Utc>,
+    /// Who made the change
+    #[serde(rename = "changedBy")]
+    pub changed_by: Entity,
+    /// The name of the data type for the object whose permissions have changed
+    #[serde(rename = "objectType")]
+    pub object_type: String,
+    /// The id of the Account where this object exists
+    #[serde(rename = "objectAccountId")]
+    pub object_account_id: String,
+    /// The id of the object that this notification is about
+    #[serde(rename = "objectId")]
+    pub object_id: String,
+    /// The myRights property before the change
+    #[serde(rename = "oldRights")]
+    pub old_rights: Option<HashMap<String, bool>>,
+    /// The myRights property after the change
+    #[serde(rename = "newRights")]
+    pub new_rights: Option<HashMap<String, bool>>,
+    /// The name of the object at the time of notification
+    pub name: String,
+}
+
+/// ShareNotification query filter condition (RFC 9670 Section 6.5)
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareNotificationFilterCondition {
+    /// Creation date must be on or after this date
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<DateTime<Utc>>,
+    /// Creation date must be before this date
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<DateTime<Utc>>,
+    /// ObjectType must match exactly
+    #[serde(rename = "objectType")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+    /// ObjectAccountId must match exactly
+    #[serde(rename = "objectAccountId")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_account_id: Option<String>,
+}
+
+/// ShareNotification sort property
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShareNotificationSortProperty {
+    Created,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
