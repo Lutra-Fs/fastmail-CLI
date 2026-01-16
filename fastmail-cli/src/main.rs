@@ -1,3 +1,4 @@
+mod commands;
 mod output;
 
 use anyhow::Result;
@@ -32,6 +33,9 @@ enum Commands {
     /// Mailbox operations
     #[command(subcommand)]
     Mailbox(MailboxCommands),
+    /// Blob operations
+    #[command(subcommand)]
+    Blob(commands::blob::BlobCommands),
     /// Masked email management
     #[command(subcommand)]
     Masked(MaskedCommands),
@@ -167,6 +171,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Mail(cmd) => handle_mail(cmd).await,
         Commands::Mailbox(cmd) => handle_mailbox(cmd).await,
+        Commands::Blob(cmd) => handle_blob(cmd).await,
         Commands::Masked(cmd) => handle_masked(cmd).await,
         Commands::Config(cmd) => handle_config(cmd).await,
     }
@@ -459,4 +464,9 @@ async fn handle_config(cmd: ConfigCommands) -> Result<()> {
             }
         },
     }
+}
+
+async fn handle_blob(cmd: commands::blob::BlobCommands) -> Result<()> {
+    let client = load_client().await?;
+    commands::blob::handle_blob_command(&client, cmd).await
 }
