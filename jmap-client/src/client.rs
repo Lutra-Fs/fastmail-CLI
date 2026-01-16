@@ -662,6 +662,23 @@ impl<C: HttpClient> JmapClient<C> {
         self.call_method_with_using(&using, "ShareNotification/changes", params).await
     }
 
+    /// Dismiss ShareNotifications via ShareNotification/set (RFC 9670)
+    /// Only destroy is supported for ShareNotifications
+    pub async fn share_notification_destroy(&self, ids: &[String]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "destroy": ids,
+        });
+
+        let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
+        self.call_method_with_using(&using, "ShareNotification/set", params).await?;
+        Ok(())
+    }
+
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {
