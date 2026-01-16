@@ -1,13 +1,19 @@
 // jmap-client/src/client.rs
 use crate::blob;
 use crate::http::HttpClient;
-use crate::types::{Email, Mailbox, BlobUploadObject, BlobUploadResponse, BlobGetResponse, BlobLookupInfo};
+use crate::types::{
+    Email, Mailbox, BlobUploadObject, BlobUploadResponse, BlobGetResponse, BlobLookupInfo,
+    Principal, ShareNotification,
+    PrincipalFilterCondition, ShareNotificationFilterCondition,
+    PrincipalSortProperty, ShareNotificationSortProperty,
+};
 use anyhow::Result;
 use serde_json::json;
 
 const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 const BLOB_CAPABILITY: &str = "urn:ietf:params:jmap:blob";
+const PRINCIPALS_CAPABILITY: &str = "urn:ietf:params:jmap:principals";
 
 #[derive(Debug, Clone)]
 pub struct Invocation {
