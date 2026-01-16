@@ -30,3 +30,47 @@ pub fn data_source_from_text(text: &str) -> DataSourceObject {
         data_as_text: text.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encode_base64() {
+        assert_eq!(encode_base64(b"hello"), "aGVsbG8=");
+        assert_eq!(encode_base64(b""), "");
+    }
+
+    #[test]
+    fn test_decode_base64() {
+        assert_eq!(decode_base64("aGVsbG8=").unwrap().as_slice(), b"hello");
+        assert_eq!(decode_base64("").unwrap().as_slice(), b"");
+    }
+
+    #[test]
+    fn test_decode_base64_invalid() {
+        assert!(decode_base64("not-valid-base64!!!").is_err());
+    }
+
+    #[test]
+    fn test_data_source_from_bytes() {
+        let ds = data_source_from_bytes(b"hello");
+        match ds {
+            DataSourceObject::AsBase64 { data_as_base64 } => {
+                assert_eq!(data_as_base64, "aGVsbG8=");
+            }
+            _ => panic!("Expected AsBase64 variant"),
+        }
+    }
+
+    #[test]
+    fn test_data_source_from_text() {
+        let ds = data_source_from_text("hello world");
+        match ds {
+            DataSourceObject::AsText { data_as_text } => {
+                assert_eq!(data_as_text, "hello world");
+            }
+            _ => panic!("Expected AsText variant"),
+        }
+    }
+}

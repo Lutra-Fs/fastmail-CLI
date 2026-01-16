@@ -194,3 +194,55 @@ pub struct BlobLookupInfo {
     #[serde(rename = "matchedIds")]
     pub matched_ids: std::collections::HashMap<String, Vec<String>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_data_source_text_serialization() {
+        let ds = DataSourceObject::AsText {
+            data_as_text: "hello".to_string(),
+        };
+        let json = serde_json::to_value(ds).unwrap();
+        assert_eq!(json, json!({"data:asText": "hello"}));
+    }
+
+    #[test]
+    fn test_data_source_base64_serialization() {
+        let ds = DataSourceObject::AsBase64 {
+            data_as_base64: "SGVsbG8=".to_string(),
+        };
+        let json = serde_json::to_value(ds).unwrap();
+        assert_eq!(json, json!({"data:asBase64": "SGVsbG8="}));
+    }
+
+    #[test]
+    fn test_data_source_blob_ref_serialization() {
+        let ds = DataSourceObject::BlobRef {
+            blob_id: "G123".to_string(),
+            offset: Some(10),
+            length: Some(100),
+        };
+        let json = serde_json::to_value(ds).unwrap();
+        assert_eq!(
+            json,
+            json!({"blobId": "G123", "offset": 10, "length": 100})
+        );
+    }
+
+    #[test]
+    fn test_blob_get_response_digest() {
+        let json = json!({
+            "id": "G123",
+            "size": 100,
+            "digest:sha": "abc123",
+            "digest:sha-256": "def456"
+        });
+        let resp: BlobGetResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(resp.digest("sha"), Some(&"abc123".to_string()));
+        assert_eq!(resp.digest("sha-256"), Some(&"def456".to_string()));
+        assert_eq!(resp.digest("md5"), None);
+    }
+}

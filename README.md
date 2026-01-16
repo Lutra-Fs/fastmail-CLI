@@ -98,6 +98,38 @@ All commands output JSON:
 - `2`: Permanent error (do not retry)
 - `3`: Safety check failed (operation rejected)
 
+## Blob Operations (JMAP RFC 9404)
+
+Check if your account supports Blob operations:
+
+```sh
+fastmail blob capability
+```
+
+Upload a file as a blob:
+
+```sh
+fastmail blob upload document.pdf --type application/pdf
+```
+
+Download blob content:
+
+```sh
+fastmail blob download <BLOB_ID> output.pdf
+```
+
+Get blob metadata:
+
+```sh
+fastmail blob info <BLOB_ID>
+```
+
+Look up which objects reference a blob:
+
+```sh
+fastmail blob lookup <BLOB_ID> --types Email --types Mailbox
+```
+
 ## License
 
 MIT OR Apache-2.0
