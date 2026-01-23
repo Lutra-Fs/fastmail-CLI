@@ -10,17 +10,43 @@ pub use client::JmapClient;
 pub use error::BlobError;
 pub use http::{HttpClient, HttpError};
 pub use types::{
-    Email, EmailAddress, Mailbox, BodyPart, Session, AccountData,
-    // Blob types
+    // Session
+    Session, AccountData, CoreCapability,
+    // Filter/Sort
+    Filter, FilterOperator, Comparator,
+    // Response types
+    SetResponse, SetError, ChangesResponse, QueryChangesResponse, AddedItem,
+    // Mailbox
+    Mailbox, MailboxRights, MailboxFilterCondition,
+    // Thread
+    Thread,
+    // Email
+    Email, EmailAddress, BodyPart, EmailBodyPart, EmailHeader, EmailBodyValue,
+    EmailFilterCondition, EmailCreate, EmailImport,
+    // SearchSnippet
+    SearchSnippet,
+    // Identity
+    Identity,
+    // EmailSubmission
+    EmailSubmission, Envelope, UndoStatus, DeliveryStatus,
+    // VacationResponse
+    VacationResponse,
+    // Blob types (RFC 9404)
     BlobCapability, BlobUploadObject, DataSourceObject,
-    BlobCreatedInfo, BlobUploadResponse,
-    BlobGetResponse, BlobLookupInfo,
+    BlobCreatedInfo, BlobUploadResponse, BlobGetResponse, BlobLookupInfo,
+    BlobCopyResponse,
     // Sharing types (RFC 9670)
     Principal, PrincipalType, PrincipalFilterCondition, PrincipalSortProperty,
     ShareNotification, Entity,
     ShareNotificationFilterCondition, ShareNotificationSortProperty,
     PrincipalsCapability, PrincipalsAccountCapability, PrincipalsOwnerCapability,
+    // Push
+    PushSubscription, PushKeys,
 };
+
+// Re-export error types separately
+pub use error::MethodError;
+pub use error::error_types;
 
 // Re-export reqwest client when feature is enabled
 #[cfg(feature = "reqwest")]

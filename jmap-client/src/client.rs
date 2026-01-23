@@ -2,10 +2,14 @@
 use crate::blob;
 use crate::http::HttpClient;
 use crate::types::{
-    Email, Mailbox, BlobUploadObject, BlobUploadResponse, BlobGetResponse, BlobLookupInfo,
+    Email, Mailbox, Thread, SearchSnippet, Identity,
+    EmailSubmission, Envelope, UndoStatus, DeliveryStatus, VacationResponse,
+    EmailCreate, EmailBodyValue, EmailImport,
+    BlobUploadObject, BlobUploadResponse, BlobGetResponse, BlobLookupInfo,
     Principal, ShareNotification,
     PrincipalFilterCondition, ShareNotificationFilterCondition,
     PrincipalSortProperty, ShareNotificationSortProperty,
+    PushSubscription, ChangesResponse, QueryChangesResponse, BlobCopyResponse,
 };
 use anyhow::Result;
 use serde_json::json;
@@ -14,6 +18,8 @@ const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 const MAIL_CAPABILITY: &str = "urn:ietf:params:jmap:mail";
 const BLOB_CAPABILITY: &str = "urn:ietf:params:jmap:blob";
 const PRINCIPALS_CAPABILITY: &str = "urn:ietf:params:jmap:principals";
+const SUBMISSION_CAPABILITY: &str = "urn:ietf:params:jmap:submission";
+const VACATION_CAPABILITY: &str = "urn:ietf:params:jmap:vacationresponse";
 
 #[derive(Debug, Clone)]
 pub struct Invocation {
@@ -226,6 +232,171 @@ impl<C: HttpClient> JmapClient<C> {
         Ok(())
     }
 
+    /// Create a new Email (RFC 8621 §4.6)
+    pub async fn email_create(&self, email: EmailCreate) -> Result<Email> {
+        let params = json!({
+            "accountId": self.account_id,
+            "create": { "new": email },
+        });
+
+        let args = self.call_method("Email/set", params).await?;
+
+        // Check for errors
+        if let Some(not_created) = args.get("notCreated") {
+            if let Some(error) = not_created.get("new") {
+                anyhow::bail!("Failed to create email: {}", error);
+            }
+        }
+
+        let created = args
+            .get("created")
+            .and_then(|c| c.get("new"))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No created email in response"))?;
+
+        serde_json::from_value(created).map_err(Into::into)
+    }
+
+    /// Update an Email's mutable properties (RFC 8621 §4.6)
+    /// Only mailboxIds and keywords can be updated
+    pub async fn email_update(
+        &self,
+        id: &str,
+        mailbox_ids: Option<std::collections::HashMap<String, bool>>,
+        keywords: Option<std::collections::HashMap<String, bool>>,
+    ) -> Result<()> {
+        let mut update = serde_json::Map::new();
+
+        if let Some(m) = mailbox_ids {
+            update.insert("mailboxIds".to_string(), json!(m));
+        }
+        if let Some(k) = keywords {
+            update.insert("keywords".to_string(), json!(k));
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "update": { id: update },
+        });
+
+        self.call_method("Email/set", params).await?;
+        Ok(())
+    }
+
+    /// Import an RFC 5322 message from a blob (RFC 8621 §4.8)
+    pub async fn email_import(&self, import: EmailImport) -> Result<Email> {
+        let params = json!({
+            "accountId": self.account_id,
+            "emails": { "import1": import },
+        });
+
+        let args = self.call_method("Email/import", params).await?;
+
+        // Check for errors
+        if let Some(not_created) = args.get("notCreated") {
+            if let Some(error) = not_created.get("import1") {
+                anyhow::bail!("Failed to import email: {}", error);
+            }
+        }
+
+        let created = args
+            .get("created")
+            .and_then(|c| c.get("import1"))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No imported email in response"))?;
+
+        serde_json::from_value(created).map_err(Into::into)
+    }
+
+    /// Copy emails between accounts (RFC 8621 §4.7)
+    pub async fn email_copy(
+        &self,
+        from_account_id: &str,
+        email_ids: &[String],
+        mailbox_ids: std::collections::HashMap<String, bool>,
+    ) -> Result<std::collections::HashMap<String, Email>> {
+        let create: std::collections::HashMap<String, serde_json::Value> = email_ids
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    json!({
+                        "mailboxIds": mailbox_ids.clone()
+                    }),
+                )
+            })
+            .collect();
+
+        let params = json!({
+            "fromAccountId": from_account_id,
+            "accountId": self.account_id,
+            "create": create,
+        });
+
+        let args = self.call_method("Email/copy", params).await?;
+
+        let created = args
+            .get("created")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Email/copy response"))?;
+
+        created
+            .iter()
+            .map(|(k, v)| {
+                let email: Email = serde_json::from_value(v.clone())?;
+                Ok((k.clone(), email))
+            })
+            .collect()
+    }
+
+    /// Parse a blob as an RFC 5322 message without storing it (RFC 8621 §4.9)
+    pub async fn email_parse(
+        &self,
+        blob_ids: &[String],
+        properties: Option<Vec<String>>,
+        body_properties: Option<Vec<String>>,
+        fetch_text_body_values: Option<bool>,
+        fetch_html_body_values: Option<bool>,
+        fetch_all_body_values: Option<bool>,
+        max_body_value_bytes: Option<u64>,
+    ) -> Result<Vec<Email>> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "blobIds": blob_ids,
+        });
+
+        if let Some(p) = properties {
+            params["properties"] = json!(p);
+        }
+        if let Some(bp) = body_properties {
+            params["bodyProperties"] = json!(bp);
+        }
+        if let Some(v) = fetch_text_body_values {
+            params["fetchTextBodyValues"] = json!(v);
+        }
+        if let Some(v) = fetch_html_body_values {
+            params["fetchHTMLBodyValues"] = json!(v);
+        }
+        if let Some(v) = fetch_all_body_values {
+            params["fetchAllBodyValues"] = json!(v);
+        }
+        if let Some(v) = max_body_value_bytes {
+            params["maxBodyValueBytes"] = json!(v);
+        }
+
+        let args = self.call_method("Email/parse", params).await?;
+
+        let parsed = args
+            .get("parsed")
+            .and_then(|v| v.as_object())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Email/parse response"))?;
+
+        parsed
+            .values()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
     /// List all mailboxes
     pub async fn mailbox_get_all(&self) -> Result<Vec<Mailbox>> {
         let params = json!({
@@ -276,6 +447,15 @@ impl<C: HttpClient> JmapClient<C> {
         Ok(Mailbox {
             id: id.to_string(),
             name: name.to_string(),
+            parent_id: None,
+            role: None,
+            sort_order: 0,
+            total_emails: 0,
+            unread_emails: 0,
+            total_threads: 0,
+            unread_threads: 0,
+            my_rights: None,
+            is_subscribed: false,
         })
     }
 
@@ -287,6 +467,336 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         self.call_method("Mailbox/set", params).await?;
+        Ok(())
+    }
+
+    /// Query Mailboxes with filter and sort (RFC 8621 §2.3)
+    pub async fn mailbox_query(
+        &self,
+        filter: Option<crate::types::MailboxFilterCondition>,
+        sort: Option<Vec<crate::types::Comparator>>,
+        limit: Option<usize>,
+    ) -> Result<Vec<String>> {
+        let mut params = json!({
+            "accountId": self.account_id,
+        });
+
+        if let Some(f) = filter {
+            params["filter"] = serde_json::to_value(f)?;
+        }
+        if let Some(s) = sort {
+            params["sort"] = serde_json::to_value(s)?;
+        }
+        if let Some(l) = limit {
+            params["limit"] = json!(l);
+        }
+
+        let args = self.call_method("Mailbox/query", params).await?;
+
+        let ids_arr = args
+            .get("ids")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Mailbox/query response: no ids"))?;
+
+        Ok(ids_arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(String::from)
+            .collect())
+    }
+
+    /// Update a Mailbox (RFC 8621 §2.5)
+    pub async fn mailbox_update(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        parent_id: Option<Option<&str>>,
+        is_subscribed: Option<bool>,
+        sort_order: Option<u32>,
+    ) -> Result<()> {
+        let mut update = serde_json::Map::new();
+
+        if let Some(n) = name {
+            update.insert("name".to_string(), json!(n));
+        }
+        if let Some(p) = parent_id {
+            update.insert("parentId".to_string(), json!(p));
+        }
+        if let Some(s) = is_subscribed {
+            update.insert("isSubscribed".to_string(), json!(s));
+        }
+        if let Some(o) = sort_order {
+            update.insert("sortOrder".to_string(), json!(o));
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "update": { id: update },
+        });
+
+        self.call_method("Mailbox/set", params).await?;
+        Ok(())
+    }
+
+    // RFC 8621 Thread methods (§3)
+
+    /// Get Threads by IDs (RFC 8621 §3.1)
+    pub async fn thread_get(&self, ids: &[String]) -> Result<Vec<Thread>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": ids,
+        });
+
+        let args = self.call_method("Thread/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Thread/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Get Thread changes since state (RFC 8621 §3.2)
+    pub async fn thread_changes(
+        &self,
+        since_state: &str,
+        max_changes: Option<usize>,
+    ) -> Result<ChangesResponse> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let args = self.call_method("Thread/changes", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    // RFC 8621 SearchSnippet methods (§5)
+
+    /// Get SearchSnippets for emails matching a filter (RFC 8621 §5.1)
+    pub async fn search_snippet_get(
+        &self,
+        email_ids: &[String],
+        filter: Option<serde_json::Value>,
+    ) -> Result<Vec<SearchSnippet>> {
+        if email_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut params = json!({
+            "accountId": self.account_id,
+            "emailIds": email_ids,
+        });
+
+        if let Some(f) = filter {
+            params["filter"] = f;
+        }
+
+        let args = self.call_method("SearchSnippet/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid SearchSnippet/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    // RFC 8621 Identity methods (§6)
+
+    /// Get all Identities (RFC 8621 §6.1)
+    pub async fn identity_get_all(&self) -> Result<Vec<Identity>> {
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": null,
+        });
+
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Identity/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid Identity/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Get Identity changes (RFC 8621 §6.2)
+    pub async fn identity_changes(
+        &self,
+        since_state: &str,
+        max_changes: Option<usize>,
+    ) -> Result<ChangesResponse> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Identity/changes", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    // RFC 8621 EmailSubmission methods (§7)
+
+    /// Create and send an EmailSubmission (RFC 8621 §7.5)
+    pub async fn email_submission_create(
+        &self,
+        identity_id: &str,
+        email_id: &str,
+        envelope: Option<Envelope>,
+    ) -> Result<EmailSubmission> {
+        let mut create_obj = json!({
+            "identityId": identity_id,
+            "emailId": email_id,
+        });
+
+        if let Some(env) = envelope {
+            create_obj["envelope"] = serde_json::to_value(env)?;
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "create": { "sub": create_obj },
+        });
+
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
+        let args = self.call_method_with_using(&using, "EmailSubmission/set", params).await?;
+
+        // Check for errors
+        if let Some(not_created) = args.get("notCreated") {
+            if let Some(error) = not_created.get("sub") {
+                anyhow::bail!("Failed to submit email: {}", error);
+            }
+        }
+
+        let created = args
+            .get("created")
+            .and_then(|c| c.get("sub"))
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("No created submission in response"))?;
+
+        serde_json::from_value(created).map_err(Into::into)
+    }
+
+    /// Get EmailSubmissions by IDs (RFC 8621 §7.1)
+    pub async fn email_submission_get(&self, ids: &[String]) -> Result<Vec<EmailSubmission>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": ids,
+        });
+
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
+        let args = self.call_method_with_using(&using, "EmailSubmission/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid EmailSubmission/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Cancel a pending EmailSubmission (RFC 8621 §7.5)
+    pub async fn email_submission_cancel(&self, id: &str) -> Result<()> {
+        let params = json!({
+            "accountId": self.account_id,
+            "update": { id: { "undoStatus": "canceled" } },
+        });
+
+        let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
+        self.call_method_with_using(&using, "EmailSubmission/set", params).await?;
+        Ok(())
+    }
+
+    // RFC 8621 VacationResponse methods (§8)
+
+    /// Get VacationResponse (RFC 8621 §8.1)
+    /// Note: There is only ever one VacationResponse per account with id "singleton"
+    pub async fn vacation_response_get(&self) -> Result<VacationResponse> {
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": ["singleton"],
+        });
+
+        let using = [CORE_CAPABILITY, VACATION_CAPABILITY];
+        let args = self.call_method_with_using(&using, "VacationResponse/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid VacationResponse/get response: no list"))?;
+
+        let first = list.first()
+            .ok_or_else(|| anyhow::anyhow!("No VacationResponse in response"))?;
+
+        serde_json::from_value(first.clone()).map_err(Into::into)
+    }
+
+    /// Update VacationResponse (RFC 8621 §8.2)
+    pub async fn vacation_response_set(
+        &self,
+        is_enabled: Option<bool>,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
+        subject: Option<&str>,
+        text_body: Option<&str>,
+        html_body: Option<&str>,
+    ) -> Result<()> {
+        let mut update = serde_json::Map::new();
+
+        if let Some(v) = is_enabled {
+            update.insert("isEnabled".to_string(), json!(v));
+        }
+        if let Some(v) = from_date {
+            update.insert("fromDate".to_string(), json!(v));
+        }
+        if let Some(v) = to_date {
+            update.insert("toDate".to_string(), json!(v));
+        }
+        if let Some(v) = subject {
+            update.insert("subject".to_string(), json!(v));
+        }
+        if let Some(v) = text_body {
+            update.insert("textBody".to_string(), json!(v));
+        }
+        if let Some(v) = html_body {
+            update.insert("htmlBody".to_string(), json!(v));
+        }
+
+        let params = json!({
+            "accountId": self.account_id,
+            "update": { "singleton": update },
+        });
+
+        let using = [CORE_CAPABILITY, VACATION_CAPABILITY];
+        self.call_method_with_using(&using, "VacationResponse/set", params).await?;
         Ok(())
     }
 
@@ -677,6 +1187,146 @@ impl<C: HttpClient> JmapClient<C> {
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
         self.call_method_with_using(&using, "ShareNotification/set", params).await?;
         Ok(())
+    }
+
+    // RFC 8620 Core methods
+
+    /// Core/echo - simple ping test (RFC 8620 §4)
+    pub async fn core_echo(&self, data: serde_json::Value) -> Result<serde_json::Value> {
+        let using = [CORE_CAPABILITY];
+        self.call_method_with_using(&using, "Core/echo", data).await
+    }
+
+    // RFC 8620 Changes methods (§5.2)
+
+    /// Get Email changes since a state (RFC 8620 §5.2)
+    pub async fn email_changes(
+        &self,
+        since_state: &str,
+        max_changes: Option<usize>,
+    ) -> Result<ChangesResponse> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let args = self.call_method("Email/changes", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    /// Get Mailbox changes since a state (RFC 8620 §5.2)
+    pub async fn mailbox_changes(
+        &self,
+        since_state: &str,
+        max_changes: Option<usize>,
+    ) -> Result<ChangesResponse> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceState": since_state,
+        });
+
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let args = self.call_method("Mailbox/changes", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    // RFC 8620 QueryChanges method (§5.6)
+
+    /// Get Email/queryChanges for incremental query sync (RFC 8620 §5.6)
+    pub async fn email_query_changes(
+        &self,
+        since_query_state: &str,
+        filter: Option<serde_json::Value>,
+        sort: Option<Vec<serde_json::Value>>,
+        max_changes: Option<usize>,
+    ) -> Result<QueryChangesResponse> {
+        let mut params = json!({
+            "accountId": self.account_id,
+            "sinceQueryState": since_query_state,
+        });
+
+        if let Some(f) = filter {
+            params["filter"] = f;
+        }
+        if let Some(s) = sort {
+            params["sort"] = json!(s);
+        }
+        if let Some(mc) = max_changes {
+            params["maxChanges"] = json!(mc);
+        }
+
+        let args = self.call_method("Email/queryChanges", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    // RFC 8620 Blob/copy (§6.3)
+
+    /// Copy blobs between accounts (RFC 8620 §6.3)
+    pub async fn blob_copy(
+        &self,
+        from_account_id: &str,
+        blob_ids: &[String],
+    ) -> Result<BlobCopyResponse> {
+        let params = json!({
+            "fromAccountId": from_account_id,
+            "accountId": self.account_id,
+            "blobIds": blob_ids,
+        });
+
+        let using = [CORE_CAPABILITY];
+        let args = self.call_method_with_using(&using, "Blob/copy", params).await?;
+        serde_json::from_value(args).map_err(Into::into)
+    }
+
+    // RFC 8620 Push methods (§7.2)
+
+    /// Get PushSubscriptions by IDs (RFC 8620 §7.2.1)
+    pub async fn push_subscription_get(&self, ids: Option<&[String]>) -> Result<Vec<PushSubscription>> {
+        let params = json!({
+            "ids": ids,
+        });
+
+        let using = [CORE_CAPABILITY];
+        let args = self.call_method_with_using(&using, "PushSubscription/get", params).await?;
+
+        let list = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| anyhow::anyhow!("Invalid PushSubscription/get response: no list"))?;
+
+        list.iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(Into::into))
+            .collect()
+    }
+
+    /// Create or update PushSubscriptions (RFC 8620 §7.2.2)
+    pub async fn push_subscription_set(
+        &self,
+        create: Option<std::collections::HashMap<String, serde_json::Value>>,
+        update: Option<std::collections::HashMap<String, serde_json::Value>>,
+        destroy: Option<Vec<String>>,
+    ) -> Result<serde_json::Value> {
+        let mut params = json!({});
+
+        if let Some(c) = create {
+            params["create"] = json!(c);
+        }
+        if let Some(u) = update {
+            params["update"] = json!(u);
+        }
+        if let Some(d) = destroy {
+            params["destroy"] = json!(d);
+        }
+
+        let using = [CORE_CAPABILITY];
+        self.call_method_with_using(&using, "PushSubscription/set", params).await
     }
 
 }
