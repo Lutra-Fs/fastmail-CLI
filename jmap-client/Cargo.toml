@@ -9,7 +9,7 @@ anyhow = { workspace = true }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = "1.0"
@@ -19,4 +19,4 @@ default = ["reqwest"]
 reqwest = ["dep:reqwest"]
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["macros", "rt"] }
+tokio = { version = "1.49", features = ["macros", "rt"] }

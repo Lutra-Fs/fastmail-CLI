@@ -7,20 +7,20 @@ license = "MIT"
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-directories = "5.0"
+directories = "6.0"
 jmap-client = { path = "../jmap-client" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-toml = "0.8"
+toml = "0.9"
 
 # DAV support
 chrono = { version = "0.4", features = ["serde"] }
-hyper = "1.0"
+hyper = "1.8"
 hyper-rustls = { version = "0.27", features = ["aws-lc-rs"] }
 hyper-util = "0.1"
 libdav = "0.10"
 http = "1.0"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
-tokio = "1.0"
-tower-http = { version = "0.5", features = ["auth"] }
+tokio = "1.49"
+tower-http = { version = "0.6", features = ["auth"] }
 tower-service = "0.3"

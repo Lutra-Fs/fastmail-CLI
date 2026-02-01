@@ -1,6 +1,7 @@
 // fastmail-cli/src/output.rs
 use serde::Serialize;
 use std::fmt;
+use std::io::IsTerminal;
 
 /// Output format option
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,7 +29,7 @@ pub fn format_output<T: Formattable>(data: &T, format: OutputFormat) -> String {
         OutputFormat::Json => data.to_json(),
         OutputFormat::Human => data.to_human(),
         OutputFormat::Auto => {
-            if atty::is(atty::Stream::Stdout) {
+            if std::io::stdout().is_terminal() {
                 data.to_human()
             } else {
                 data.to_json()
