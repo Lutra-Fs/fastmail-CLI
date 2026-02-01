@@ -61,7 +61,7 @@ impl<C: HttpClient> JmapClient<C> {
 
     /// Upload binary data using RFC 8620 uploadUrl
     /// Returns the blobId
-    pub async fn upload_blob(&self, data: &[u8], type_: &str) -> Result<String> {
+    pub async fn upload_blob(&self, _data: &[u8], _type_: &str) -> Result<String> {
         // This would require upload_url from Session, which we don't have here
         // For now, this is a placeholder - the actual implementation should be in the client
         // that has access to the Session object
