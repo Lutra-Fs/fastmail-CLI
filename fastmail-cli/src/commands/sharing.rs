@@ -1,10 +1,7 @@
 // fastmail-cli/src/commands/sharing.rs
 use crate::output::{print_response, ErrorResponse, Response};
 use anyhow::Result;
-use fastmail_client::{
-    PrincipalType,
-    PrincipalFilterCondition, ShareNotificationFilterCondition,
-};
+use fastmail_client::{PrincipalFilterCondition, PrincipalType, ShareNotificationFilterCondition};
 
 #[derive(clap::Subcommand, Clone, Debug)]
 pub enum SharingCommands {
@@ -86,9 +83,7 @@ pub async fn handle_sharing_command(
                 };
             }
 
-            let principals = client
-                .list_principals(Some(filter), limit)
-                .await?;
+            let principals = client.list_principals(Some(filter), limit).await?;
 
             let resp = Response::ok(principals);
             print_response(&resp)?;
@@ -107,9 +102,7 @@ pub async fn handle_sharing_command(
                 filter.object_type = Some(ot);
             }
 
-            let notifications = client
-                .list_share_notifications(Some(filter), limit)
-                .await?;
+            let notifications = client.list_share_notifications(Some(filter), limit).await?;
 
             let resp = Response::ok(notifications);
             print_response(&resp)?;
@@ -118,7 +111,7 @@ pub async fn handle_sharing_command(
         SharingCommands::DismissNotifications { ids } => {
             if ids.is_empty() {
                 let resp = Response::<()>::error(ErrorResponse::validation_failed(
-                    "No notification IDs provided".to_string()
+                    "No notification IDs provided".to_string(),
                 ));
                 print_response(&resp)?;
                 return Ok(());

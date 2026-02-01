@@ -89,10 +89,14 @@ impl HttpClient for ReqwestClient {
         let is_success = status.is_success();
         let status_code = status.as_u16();
 
-        let bytes = resp.bytes().await.map_err(|e| HttpError {
-            status: Some(status_code),
-            message: e.to_string(),
-        })?.to_vec();
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| HttpError {
+                status: Some(status_code),
+                message: e.to_string(),
+            })?
+            .to_vec();
 
         if !is_success {
             return Err(HttpError {

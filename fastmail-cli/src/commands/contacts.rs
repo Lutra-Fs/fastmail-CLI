@@ -1,8 +1,9 @@
 // fastmail-cli/src/commands/contacts.rs
 use crate::output::{print_response, ErrorResponse, ExitCode, Meta, Response};
+use crate::utils::confirm;
 use anyhow::Result;
 use clap::Subcommand;
-use fastmail_client::{CardDavClient, Contact, Config};
+use fastmail_client::{CardDavClient, Config, Contact};
 use serde_json::json;
 
 #[derive(Subcommand, Clone, Debug)]
@@ -13,9 +14,7 @@ pub enum ContactsCommands {
         filter: Option<String>,
     },
     /// Get a specific address book
-    GetBook {
-        href: String,
-    },
+    GetBook { href: String },
     /// Create a new address book
     CreateBook {
         name: String,
@@ -42,9 +41,7 @@ pub enum ContactsCommands {
         limit: usize,
     },
     /// Get a specific contact
-    Get {
-        href: String,
-    },
+    Get { href: String },
     /// Create a contact (JSON input)
     Create {
         #[arg(short, long)]
@@ -62,19 +59,6 @@ pub enum ContactsCommands {
         #[arg(long)]
         dry_run: bool,
     },
-}
-
-/// Prompt user for confirmation, returns true if user confirms
-fn confirm(prompt: &str) -> Result<bool> {
-    print!("{} [y/N]: ", prompt);
-    use std::io::Write;
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    Ok(input == "y" || input == "yes")
 }
 
 pub async fn handle_contacts(cmd: ContactsCommands) -> Result<()> {
@@ -199,7 +183,11 @@ pub async fn handle_contacts(cmd: ContactsCommands) -> Result<()> {
                 Ok(())
             }
         }
-        ContactsCommands::List { book, search, limit } => {
+        ContactsCommands::List {
+            book,
+            search,
+            limit,
+        } => {
             // Determine which address book to use
             let book_href = if let Some(ref book_name) = book {
                 // Try to find the address book by name/href

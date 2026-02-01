@@ -88,14 +88,24 @@ trait CardDavClientInner: Send + Sync {
     async fn find_address_books(&self, home_set: &Uri) -> Result<Vec<FoundCollection>>;
     async fn get_addressbook_resources(&self, href: &str) -> Result<Vec<FetchedResource>>;
     async fn delete_resource(&self, href: &str) -> Result<()>;
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>>;
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>>;
     async fn create_address_book(&self, href: &str, display_name: &str) -> Result<()>;
 }
 
 /// Concrete implementation of CardDavClientInner
 struct CardDavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>> + Send + Sync + 'static,
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
+        + Sync
+        + 'static,
     C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
     C::Future: Send + 'static,
 {
@@ -105,8 +115,10 @@ where
 #[async_trait::async_trait]
 impl<C> CardDavClientInner for CardDavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
-        + Send
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
         + Sync
         + Clone
         + 'static,
@@ -119,7 +131,10 @@ where
     }
 
     async fn get_addressbook_resources(&self, href: &str) -> Result<Vec<FetchedResource>> {
-        let response = self.client.request(GetAddressBookResources::new(href)).await?;
+        let response = self
+            .client
+            .request(GetAddressBookResources::new(href))
+            .await?;
         Ok(response.resources)
     }
 
@@ -128,7 +143,12 @@ where
         Ok(())
     }
 
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>> {
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>> {
         let response = self
             .client
             .request(PutResource::new(href).create(data, content_type))
@@ -198,7 +218,11 @@ impl CardDavClient {
     }
 
     /// Create a new address book
-    pub async fn create_address_book(&self, name: &str, description: Option<String>) -> Result<AddressBook> {
+    pub async fn create_address_book(
+        &self,
+        name: &str,
+        description: Option<String>,
+    ) -> Result<AddressBook> {
         let href = format!("{}{}/", self.base_url.trim_end_matches('/'), name);
 
         self.carddav.create_address_book(&href, name).await?;
@@ -217,7 +241,10 @@ impl CardDavClient {
 
     /// List all contacts in an address book
     pub async fn list_contacts(&self, addressbook_href: &str) -> Result<Vec<Contact>> {
-        let resources = self.carddav.get_addressbook_resources(addressbook_href).await?;
+        let resources = self
+            .carddav
+            .get_addressbook_resources(addressbook_href)
+            .await?;
 
         let mut contacts = Vec::new();
         for resource in resources {
@@ -246,7 +273,11 @@ impl CardDavClient {
     /// Create or update a contact in an address book
     pub async fn put_contact(&self, addressbook_href: &str, contact: &Contact) -> Result<String> {
         // Generate href from UID
-        let contact_href = format!("{}/{}.vcf", addressbook_href.trim_end_matches('/'), contact.uid);
+        let contact_href = format!(
+            "{}/{}.vcf",
+            addressbook_href.trim_end_matches('/'),
+            contact.uid
+        );
         let vcard = Self::serialize_vcard(contact)?;
 
         let etag = self
@@ -263,7 +294,11 @@ impl CardDavClient {
     }
 
     /// Search contacts by query string
-    pub async fn search_contacts(&self, addressbook_href: &str, query: &str) -> Result<Vec<Contact>> {
+    pub async fn search_contacts(
+        &self,
+        addressbook_href: &str,
+        query: &str,
+    ) -> Result<Vec<Contact>> {
         let all_contacts = self.list_contacts(addressbook_href).await?;
         let query_lower = query.to_lowercase();
 
@@ -271,10 +306,18 @@ impl CardDavClient {
             .into_iter()
             .filter(|c| {
                 c.fn_.to_lowercase().contains(&query_lower)
-                    || c.ln.as_ref().map_or(false, |ln| ln.to_lowercase().contains(&query_lower))
-                    || c.email.as_ref().map_or(false, |e| e.to_lowercase().contains(&query_lower))
-                    || c.organization.as_ref().map_or(false, |o| o.to_lowercase().contains(&query_lower))
-                    || c.notes.as_ref().map_or(false, |n| n.to_lowercase().contains(&query_lower))
+                    || c.ln
+                        .as_ref()
+                        .is_some_and(|ln| ln.to_lowercase().contains(&query_lower))
+                    || c.email
+                        .as_ref()
+                        .is_some_and(|e| e.to_lowercase().contains(&query_lower))
+                    || c.organization
+                        .as_ref()
+                        .is_some_and(|o| o.to_lowercase().contains(&query_lower))
+                    || c.notes
+                        .as_ref()
+                        .is_some_and(|n| n.to_lowercase().contains(&query_lower))
             })
             .collect();
 

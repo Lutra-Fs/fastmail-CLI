@@ -5,8 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub account: AccountConfig,
@@ -141,8 +140,8 @@ impl Config {
     }
 
     fn config_dir() -> Result<PathBuf> {
-        let base_dirs = BaseDirs::new()
-            .ok_or_else(|| anyhow!("Cannot determine config directory"))?;
+        let base_dirs =
+            BaseDirs::new().ok_or_else(|| anyhow!("Cannot determine config directory"))?;
         Ok(base_dirs.config_dir().join("fastmail-cli"))
     }
 
@@ -153,8 +152,11 @@ impl Config {
     /// Get the username for DAV authentication (email address)
     /// DAV endpoints use HTTP Basic Auth with email as username
     pub fn get_dav_username(&self) -> Result<&str> {
-        self.account.email.as_deref()
-            .ok_or_else(|| anyhow::anyhow!("DAV username (email) not set. Please set FASTMAIL_EMAIL environment variable"))
+        self.account.email.as_deref().ok_or_else(|| {
+            anyhow::anyhow!(
+                "DAV username (email) not set. Please set FASTMAIL_EMAIL environment variable"
+            )
+        })
     }
 
     /// Get the CalDAV base URL
@@ -181,4 +183,3 @@ impl Config {
             .unwrap_or_else(default_webdav_url)
     }
 }
-

@@ -1,8 +1,9 @@
 // fastmail-cli/src/commands/calendar.rs
 use crate::output::{print_response, ErrorResponse, ExitCode, Meta, Response};
+use crate::utils::confirm;
 use anyhow::Result;
-use clap::Subcommand;
 use chrono::{DateTime, Utc};
+use clap::Subcommand;
 use fastmail_client::{CalDavClient, CalendarEvent, Config};
 use serde_json::json;
 
@@ -14,9 +15,7 @@ pub enum CalendarCommands {
         filter: Option<String>,
     },
     /// Get a specific calendar
-    Get {
-        href: String,
-    },
+    Get { href: String },
     /// Create a calendar
     Create {
         name: String,
@@ -45,9 +44,7 @@ pub enum CalendarCommands {
         limit: usize,
     },
     /// Get a specific event
-    GetEvent {
-        href: String,
-    },
+    GetEvent { href: String },
     /// Create an event (JSON input)
     CreateEvent {
         #[arg(short, long)]
@@ -65,19 +62,6 @@ pub enum CalendarCommands {
         #[arg(long)]
         dry_run: bool,
     },
-}
-
-/// Prompt user for confirmation, returns true if user confirms
-fn confirm(prompt: &str) -> Result<bool> {
-    print!("{} [y/N]: ", prompt);
-    use std::io::Write;
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    Ok(input == "y" || input == "yes")
 }
 
 pub async fn handle_calendar(cmd: CalendarCommands) -> Result<()> {
@@ -219,7 +203,10 @@ pub async fn handle_calendar(cmd: CalendarCommands) -> Result<()> {
                     .iter()
                     .find(|c| {
                         c.href.ends_with(cal_name)
-                            || c.display_name.as_ref().map(|dn| dn == cal_name).unwrap_or(false)
+                            || c.display_name
+                                .as_ref()
+                                .map(|dn| dn == cal_name)
+                                .unwrap_or(false)
                     })
                     .ok_or_else(|| anyhow::anyhow!("Calendar not found: {}", cal_name))?
                     .href

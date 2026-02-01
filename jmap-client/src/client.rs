@@ -2,14 +2,11 @@
 use crate::blob;
 use crate::http::HttpClient;
 use crate::types::{
-    Email, Mailbox, Thread, SearchSnippet, Identity,
-    EmailSubmission, Envelope, UndoStatus, DeliveryStatus, VacationResponse,
-    EmailCreate, EmailBodyValue, EmailImport,
-    BlobUploadObject, BlobUploadResponse, BlobGetResponse, BlobLookupInfo,
-    Principal, ShareNotification,
-    PrincipalFilterCondition, ShareNotificationFilterCondition,
-    PrincipalSortProperty, ShareNotificationSortProperty,
-    PushSubscription, ChangesResponse, QueryChangesResponse, BlobCopyResponse,
+    BlobCopyResponse, BlobGetResponse, BlobLookupInfo, BlobUploadObject, BlobUploadResponse,
+    ChangesResponse, Email, EmailCreate, EmailImport, EmailSubmission, Envelope, Identity,
+    Mailbox, Principal, PrincipalFilterCondition, PushSubscription, QueryChangesResponse,
+    SearchSnippet, ShareNotification, ShareNotificationFilterCondition, Thread,
+    VacationResponse,
 };
 use anyhow::Result;
 use serde_json::json;
@@ -49,13 +46,17 @@ impl<C: HttpClient> JmapClient<C> {
 
     /// Perform a raw HTTP GET request (for RFC 8620 downloadUrl)
     pub async fn http_get(&self, url: &str) -> Result<Vec<u8>> {
-        self.http.get(url, vec![]).await
+        self.http
+            .get(url, vec![])
+            .await
             .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))
     }
 
     /// Perform a raw HTTP POST request (for RFC 8620 uploadUrl)
     pub async fn http_post(&self, url: &str, data: Vec<u8>, content_type: &str) -> Result<Vec<u8>> {
-        self.http.post_binary(url, data, content_type).await
+        self.http
+            .post_binary(url, data, content_type)
+            .await
             .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))
     }
 
@@ -65,7 +66,9 @@ impl<C: HttpClient> JmapClient<C> {
         // This would require upload_url from Session, which we don't have here
         // For now, this is a placeholder - the actual implementation should be in the client
         // that has access to the Session object
-        Err(anyhow::anyhow!("upload_blob requires Session upload_url - implement in client layer"))
+        Err(anyhow::anyhow!(
+            "upload_blob requires Session upload_url - implement in client layer"
+        ))
     }
 
     /// Download binary data using RFC 8620 downloadUrl
@@ -80,7 +83,11 @@ impl<C: HttpClient> JmapClient<C> {
         self.http_get(url).await
     }
 
-    pub async fn call_method(&self, method: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+    pub async fn call_method(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value> {
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY];
         self.call_method_with_using(&using, method, params).await
     }
@@ -150,7 +157,11 @@ impl<C: HttpClient> JmapClient<C> {
     }
 
     /// List emails in a mailbox by ID with optional limit
-    pub async fn email_query_in_mailbox(&self, mailbox_id: &str, limit: usize) -> Result<Vec<String>> {
+    pub async fn email_query_in_mailbox(
+        &self,
+        mailbox_id: &str,
+        limit: usize,
+    ) -> Result<Vec<String>> {
         let params = json!({
             "accountId": self.account_id,
             "limit": limit,
@@ -350,6 +361,7 @@ impl<C: HttpClient> JmapClient<C> {
     }
 
     /// Parse a blob as an RFC 5322 message without storing it (RFC 8621 §4.9)
+    #[allow(clippy::too_many_arguments)]
     pub async fn email_parse(
         &self,
         blob_ids: &[String],
@@ -625,7 +637,9 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Identity/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Identity/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -653,7 +667,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Identity/changes", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Identity/changes", params)
+            .await?;
         serde_json::from_value(args).map_err(Into::into)
     }
 
@@ -681,7 +697,9 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
-        let args = self.call_method_with_using(&using, "EmailSubmission/set", params).await?;
+        let args = self
+            .call_method_with_using(&using, "EmailSubmission/set", params)
+            .await?;
 
         // Check for errors
         if let Some(not_created) = args.get("notCreated") {
@@ -711,7 +729,9 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
-        let args = self.call_method_with_using(&using, "EmailSubmission/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "EmailSubmission/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -731,7 +751,8 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, MAIL_CAPABILITY, SUBMISSION_CAPABILITY];
-        self.call_method_with_using(&using, "EmailSubmission/set", params).await?;
+        self.call_method_with_using(&using, "EmailSubmission/set", params)
+            .await?;
         Ok(())
     }
 
@@ -746,14 +767,17 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, VACATION_CAPABILITY];
-        let args = self.call_method_with_using(&using, "VacationResponse/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "VacationResponse/get", params)
+            .await?;
 
         let list = args
             .get("list")
             .and_then(|v| v.as_array())
             .ok_or_else(|| anyhow::anyhow!("Invalid VacationResponse/get response: no list"))?;
 
-        let first = list.first()
+        let first = list
+            .first()
             .ok_or_else(|| anyhow::anyhow!("No VacationResponse in response"))?;
 
         serde_json::from_value(first.clone()).map_err(Into::into)
@@ -796,7 +820,8 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, VACATION_CAPABILITY];
-        self.call_method_with_using(&using, "VacationResponse/set", params).await?;
+        self.call_method_with_using(&using, "VacationResponse/set", params)
+            .await?;
         Ok(())
     }
 
@@ -811,7 +836,9 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Blob/upload", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Blob/upload", params)
+            .await?;
 
         serde_json::from_value(args).map_err(Into::into)
     }
@@ -844,7 +871,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Blob/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Blob/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -873,7 +902,9 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, BLOB_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Blob/lookup", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Blob/lookup", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -916,7 +947,8 @@ impl<C: HttpClient> JmapClient<C> {
             .next()
             .ok_or_else(|| anyhow::anyhow!("Blob not found"))?;
 
-        result.data_as_base64
+        result
+            .data_as_base64
             .ok_or_else(|| anyhow::anyhow!("No base64 data in response"))
     }
 
@@ -992,7 +1024,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Principal/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Principal/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -1026,7 +1060,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Principal/query", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Principal/query", params)
+            .await?;
 
         let ids_arr = args
             .get("ids")
@@ -1069,7 +1105,8 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        self.call_method_with_using(&using, "Principal/changes", params).await
+        self.call_method_with_using(&using, "Principal/changes", params)
+            .await
     }
 
     /// Get ShareNotifications via ShareNotification/get (RFC 9670)
@@ -1092,7 +1129,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        let args = self.call_method_with_using(&using, "ShareNotification/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "ShareNotification/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -1126,7 +1165,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        let args = self.call_method_with_using(&using, "ShareNotification/query", params).await?;
+        let args = self
+            .call_method_with_using(&using, "ShareNotification/query", params)
+            .await?;
 
         let ids_arr = args
             .get("ids")
@@ -1169,7 +1210,8 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        self.call_method_with_using(&using, "ShareNotification/changes", params).await
+        self.call_method_with_using(&using, "ShareNotification/changes", params)
+            .await
     }
 
     /// Dismiss ShareNotifications via ShareNotification/set (RFC 9670)
@@ -1185,7 +1227,8 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY, PRINCIPALS_CAPABILITY];
-        self.call_method_with_using(&using, "ShareNotification/set", params).await?;
+        self.call_method_with_using(&using, "ShareNotification/set", params)
+            .await?;
         Ok(())
     }
 
@@ -1281,20 +1324,27 @@ impl<C: HttpClient> JmapClient<C> {
         });
 
         let using = [CORE_CAPABILITY];
-        let args = self.call_method_with_using(&using, "Blob/copy", params).await?;
+        let args = self
+            .call_method_with_using(&using, "Blob/copy", params)
+            .await?;
         serde_json::from_value(args).map_err(Into::into)
     }
 
     // RFC 8620 Push methods (§7.2)
 
     /// Get PushSubscriptions by IDs (RFC 8620 §7.2.1)
-    pub async fn push_subscription_get(&self, ids: Option<&[String]>) -> Result<Vec<PushSubscription>> {
+    pub async fn push_subscription_get(
+        &self,
+        ids: Option<&[String]>,
+    ) -> Result<Vec<PushSubscription>> {
         let params = json!({
             "ids": ids,
         });
 
         let using = [CORE_CAPABILITY];
-        let args = self.call_method_with_using(&using, "PushSubscription/get", params).await?;
+        let args = self
+            .call_method_with_using(&using, "PushSubscription/get", params)
+            .await?;
 
         let list = args
             .get("list")
@@ -1326,9 +1376,9 @@ impl<C: HttpClient> JmapClient<C> {
         }
 
         let using = [CORE_CAPABILITY];
-        self.call_method_with_using(&using, "PushSubscription/set", params).await
+        self.call_method_with_using(&using, "PushSubscription/set", params)
+            .await
     }
-
 }
 
 fn parse_method_responses(resp: &serde_json::Value) -> Result<Vec<Invocation>> {

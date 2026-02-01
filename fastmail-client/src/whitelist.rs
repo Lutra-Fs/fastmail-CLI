@@ -5,16 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-#[derive(Debug, Deserialize, Serialize)]
-#[derive(Default)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Whitelist {
     pub allowed_recipients: Vec<String>,
 }
 
 impl Whitelist {
     pub fn load() -> Result<Self> {
-        let base_dirs = BaseDirs::new()
-            .ok_or_else(|| anyhow!("Cannot determine config directory"))?;
+        let base_dirs =
+            BaseDirs::new().ok_or_else(|| anyhow!("Cannot determine config directory"))?;
 
         let config_dir = base_dirs.config_dir().join("fastmail-cli");
         let whitelist_path = config_dir.join("allowed-recipients.json");
@@ -54,8 +53,8 @@ impl Whitelist {
     }
 
     fn save(&self) -> Result<()> {
-        let base_dirs = BaseDirs::new()
-            .ok_or_else(|| anyhow!("Cannot determine config directory"))?;
+        let base_dirs =
+            BaseDirs::new().ok_or_else(|| anyhow!("Cannot determine config directory"))?;
 
         let config_dir = base_dirs.config_dir().join("fastmail-cli");
         let whitelist_path = config_dir.join("allowed-recipients.json");
@@ -79,4 +78,3 @@ fn set_owner_only_permissions(path: &Path) -> Result<()> {
     }
     Ok(())
 }
-

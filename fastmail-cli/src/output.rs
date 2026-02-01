@@ -5,6 +5,7 @@ use std::io::IsTerminal;
 
 /// Output format option
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum OutputFormat {
     /// Auto-detect based on TTY
     Auto,
@@ -15,6 +16,7 @@ pub enum OutputFormat {
 }
 
 /// Trait for types that can be formatted for output
+#[allow(dead_code)]
 pub trait Formattable {
     /// Format as JSON string
     fn to_json(&self) -> String;
@@ -24,6 +26,7 @@ pub trait Formattable {
 }
 
 /// Format output based on the specified format
+#[allow(dead_code)]
 pub fn format_output<T: Formattable>(data: &T, format: OutputFormat) -> String {
     match format {
         OutputFormat::Json => data.to_json(),
@@ -118,6 +121,7 @@ impl ErrorResponse {
         }
     }
 
+    #[allow(dead_code)]
     pub fn rate_limited(retry_after: u64) -> Self {
         Self {
             type_: "rate_limited",
@@ -146,6 +150,7 @@ pub struct RateLimitInfo {
 
 /// Exit codes for agent decision making
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum ExitCode {
     Success = 0,
     TransientError = 1,
@@ -177,24 +182,32 @@ pub fn print_response<T: Serialize>(resp: &Response<T>) -> anyhow::Result<()> {
 }
 
 /// Print a styled success message
+#[allow(dead_code)]
 pub fn print_success(message: &str) {
     let term = console::Term::stdout();
     let _ = term.write_str(&format!("{} {}\n", console::style("✓").green(), message));
 }
 
 /// Print a styled error message
+#[allow(dead_code)]
 pub fn print_error(message: &str) {
     let term = console::Term::stdout();
     let _ = term.write_str(&format!("{} {}\n", console::style("Error:").red(), message));
 }
 
 /// Print a styled warning message
+#[allow(dead_code)]
 pub fn print_warning(message: &str) {
     let term = console::Term::stdout();
-    let _ = term.write_str(&format!("{} {}\n", console::style("Warning:").yellow(), message));
+    let _ = term.write_str(&format!(
+        "{} {}\n",
+        console::style("Warning:").yellow(),
+        message
+    ));
 }
 
 /// Print a styled info/header
+#[allow(dead_code)]
 pub fn print_header(key: &str, value: &str) {
     let term = console::Term::stdout();
     let _ = term.write_str(&format!("{}: {}\n", console::style(key).bold(), value));
@@ -220,14 +233,18 @@ mod tests {
 
     #[test]
     fn test_format_output_json() {
-        let data = TestData { message: "hello".to_string() };
+        let data = TestData {
+            message: "hello".to_string(),
+        };
         let result = format_output(&data, OutputFormat::Json);
         assert_eq!(result, r#"{"message":"hello"}"#);
     }
 
     #[test]
     fn test_format_output_human() {
-        let data = TestData { message: "hello".to_string() };
+        let data = TestData {
+            message: "hello".to_string(),
+        };
         let result = format_output(&data, OutputFormat::Human);
         assert_eq!(result, "Message: hello");
     }

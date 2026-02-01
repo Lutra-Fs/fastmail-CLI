@@ -1,5 +1,6 @@
 // fastmail-cli/src/commands/files.rs
 use crate::output::{print_response, ErrorResponse, ExitCode, Meta, Response};
+use crate::utils::confirm;
 use anyhow::Result;
 use clap::Subcommand;
 use fastmail_client::{Config, DavClient, DavService};
@@ -17,9 +18,7 @@ pub enum FilesCommands {
         filter: Option<String>,
     },
     /// Get file info
-    Info {
-        path: String,
-    },
+    Info { path: String },
     /// Upload a file
     Upload {
         local: String,
@@ -70,25 +69,16 @@ pub enum FilesCommands {
     },
 }
 
-/// Prompt user for confirmation, returns true if user confirms
-fn confirm(prompt: &str) -> Result<bool> {
-    print!("{} [y/N]: ", prompt);
-    use std::io::Write;
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    Ok(input == "y" || input == "yes")
-}
-
 pub async fn handle_files(cmd: FilesCommands) -> Result<()> {
     let config = Config::load()?;
     let client = DavClient::from_config(&config, DavService::Files).await?;
 
     match cmd {
-        FilesCommands::List { path, depth, filter } => {
+        FilesCommands::List {
+            path,
+            depth,
+            filter,
+        } => {
             let mut resources = client.list(&path, depth).await?;
 
             // Apply filter if provided

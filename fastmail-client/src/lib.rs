@@ -9,17 +9,15 @@ pub mod whitelist;
 pub use caldav::{CalDavClient, Calendar, CalendarEvent};
 pub use carddav::{AddressBook, CardDavClient, Contact};
 pub use client::FastmailClient;
-pub use config::{Config, AccountConfig, DavEndpoints};
-pub use dav::{DavClient, DavResource, DavService, depth_from_u8, DepthValue};
+pub use config::{AccountConfig, Config, DavEndpoints};
+pub use dav::{depth_from_u8, DavClient, DavResource, DavService, DepthValue};
 pub use masked_email::{MaskedEmail, MaskedEmailState};
 pub use whitelist::Whitelist;
 
 // Re-export from jmap-client
-pub use jmap_client::{Mailbox, BlobCapability};
+pub use jmap_client::{BlobCapability, Mailbox};
 // Sharing types
 pub use jmap_client::{
-    Principal, PrincipalType, PrincipalFilterCondition,
-    ShareNotification, Entity,
-    ShareNotificationFilterCondition,
-    PrincipalsAccountCapability, PrincipalsOwnerCapability,
+    Entity, Principal, PrincipalFilterCondition, PrincipalType, PrincipalsAccountCapability,
+    PrincipalsOwnerCapability, ShareNotification, ShareNotificationFilterCondition,
 };

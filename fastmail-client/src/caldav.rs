@@ -8,7 +8,7 @@ use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
-use libdav::caldav::{CreateCalendar, FindCalendars, GetCalendarResources, CalendarComponent};
+use libdav::caldav::{CalendarComponent, CreateCalendar, FindCalendars, GetCalendarResources};
 use libdav::dav::{Delete, FoundCollection, PutResource, WebDavClient};
 use libdav::FetchedResource;
 use serde::{Deserialize, Serialize};
@@ -73,14 +73,24 @@ trait CalDavClientInner: Send + Sync {
     async fn find_calendars(&self, home_set: &Uri) -> Result<Vec<FoundCollection>>;
     async fn get_calendar_resources(&self, href: &str) -> Result<Vec<FetchedResource>>;
     async fn delete_resource(&self, href: &str) -> Result<()>;
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>>;
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>>;
     async fn create_calendar(&self, href: &str, display_name: &str) -> Result<()>;
 }
 
 /// Concrete implementation of CalDavClientInner
 struct CalDavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>> + Send + Sync + 'static,
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
+        + Sync
+        + 'static,
     C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
     C::Future: Send + 'static,
 {
@@ -90,8 +100,10 @@ where
 #[async_trait::async_trait]
 impl<C> CalDavClientInner for CalDavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
-        + Send
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
         + Sync
         + Clone
         + 'static,
@@ -113,7 +125,12 @@ where
         Ok(())
     }
 
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>> {
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>> {
         let response = self
             .client
             .request(PutResource::new(href).create(data, content_type))
@@ -185,7 +202,11 @@ impl CalDavClient {
     }
 
     /// Create a new calendar
-    pub async fn create_calendar(&self, name: &str, description: Option<String>) -> Result<Calendar> {
+    pub async fn create_calendar(
+        &self,
+        name: &str,
+        description: Option<String>,
+    ) -> Result<Calendar> {
         let href = format!("{}{}/", self.base_url.trim_end_matches('/'), name);
 
         self.caldav.create_calendar(&href, name).await?;
@@ -343,7 +364,10 @@ impl CalDavClient {
                 .and_hms_opt(hour, minute, second)
                 .ok_or_else(|| anyhow!("Invalid time: {}:{}:{}", hour, minute, second))?;
 
-            Ok(DateTime::<Utc>::from_naive_utc_and_offset(naive_datetime, Utc))
+            Ok(DateTime::<Utc>::from_naive_utc_and_offset(
+                naive_datetime,
+                Utc,
+            ))
         } else {
             Err(anyhow!("Unsupported datetime format: {}", s))
         }
@@ -351,7 +375,9 @@ impl CalDavClient {
 
     /// Serialize a calendar event to iCalendar format (simplified MVP implementation)
     fn serialize_icalendar_event(event: &CalendarEvent) -> Result<String> {
-        let mut ical = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//fastmail-cli//EN\r\nBEGIN:VEVENT\r\n");
+        let mut ical = String::from(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//fastmail-cli//EN\r\nBEGIN:VEVENT\r\n",
+        );
 
         ical.push_str(&format!("UID:{}\r\n", event.uid));
         ical.push_str(&format!("SUMMARY:{}\r\n", event.summary));
@@ -364,10 +390,7 @@ impl CalDavClient {
             "DTSTART:{}\r\n",
             event.start.format("%Y%m%dT%H%M%SZ")
         ));
-        ical.push_str(&format!(
-            "DTEND:{}\r\n",
-            event.end.format("%Y%m%dT%H%M%SZ")
-        ));
+        ical.push_str(&format!("DTEND:{}\r\n", event.end.format("%Y%m%dT%H%M%SZ")));
 
         if let Some(ref location) = event.location {
             ical.push_str(&format!("LOCATION:{}\r\n", location));
@@ -409,7 +432,10 @@ END:VCALENDAR";
 
         assert_eq!(event.uid, "test-event-123");
         assert_eq!(event.summary, "Test Meeting");
-        assert_eq!(event.description, Some("This is a test meeting".to_string()));
+        assert_eq!(
+            event.description,
+            Some("This is a test meeting".to_string())
+        );
         assert_eq!(event.location, Some("Conference Room A".to_string()));
         assert_eq!(event.status, Some("CONFIRMED".to_string()));
     }

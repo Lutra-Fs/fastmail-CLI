@@ -1,7 +1,7 @@
 // jmap-client/src/types.rs
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
 
 /// JMAP Email object
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1015,10 +1015,7 @@ mod tests {
             length: Some(100),
         };
         let json = serde_json::to_value(ds).unwrap();
-        assert_eq!(
-            json,
-            json!({"blobId": "G123", "offset": 10, "length": 100})
-        );
+        assert_eq!(json, json!({"blobId": "G123", "offset": 10, "length": 100}));
     }
 
     #[test]

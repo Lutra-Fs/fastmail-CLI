@@ -27,7 +27,12 @@ pub trait HttpClient: Send + Sync {
     async fn post_json(&self, url: &str, body: Vec<u8>) -> Result<Vec<u8>, HttpError>;
 
     /// POST binary data to URL with custom Content-Type, return response bytes
-    async fn post_binary(&self, _url: &str, _data: Vec<u8>, _content_type: &str) -> Result<Vec<u8>, HttpError> {
+    async fn post_binary(
+        &self,
+        _url: &str,
+        _data: Vec<u8>,
+        _content_type: &str,
+    ) -> Result<Vec<u8>, HttpError> {
         // Default implementation: override in actual client
         Err(HttpError {
             status: None,

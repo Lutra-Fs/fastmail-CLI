@@ -46,19 +46,33 @@ pub struct DavClient {
 /// Trait to abstract over the complex WebDavClient generic type.
 /// This allows us to hide the complex type parameters from the public API.
 #[async_trait::async_trait]
-trait DavClientInner: Send + Sync {
+pub trait DavClientInner: Send + Sync {
     async fn list_resources(&self, href: &str) -> Result<Vec<ListedResource>>;
     async fn delete_resource(&self, href: &str) -> Result<()>;
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>>;
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>>;
     async fn find_collections(&self, uri: &Uri) -> Result<Vec<FoundCollection>>;
-    async fn get_property(&self, href: &str, property: &libdav::PropertyName<'_, '_>) -> Result<Option<String>>;
+    async fn get_property(
+        &self,
+        href: &str,
+        property: &libdav::PropertyName<'_, '_>,
+    ) -> Result<Option<String>>;
     fn clone_client(&self) -> Box<dyn DavClientInner>;
 }
 
 /// Concrete implementation of DavClientInner
 struct DavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>> + Send + Sync + 'static,
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
+        + Sync
+        + 'static,
     C::Error: Into<Box<dyn std::error::Error + Send + Sync>> + std::error::Error + Send + Sync,
     C::Future: Send + 'static,
 {
@@ -67,8 +81,10 @@ where
 
 impl<C> Clone for DavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
-        + Send
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
         + Sync
         + Clone
         + 'static,
@@ -85,8 +101,10 @@ where
 #[async_trait::async_trait]
 impl<C> DavClientInner for DavClientInnerImpl<C>
 where
-    C: tower_service::Service<http::Request<String>, Response = http::Response<hyper::body::Incoming>>
-        + Send
+    C: tower_service::Service<
+            http::Request<String>,
+            Response = http::Response<hyper::body::Incoming>,
+        > + Send
         + Sync
         + Clone
         + 'static,
@@ -103,7 +121,12 @@ where
         Ok(())
     }
 
-    async fn put_resource(&self, href: &str, data: String, content_type: &str) -> Result<Option<String>> {
+    async fn put_resource(
+        &self,
+        href: &str,
+        data: String,
+        content_type: &str,
+    ) -> Result<Option<String>> {
         let response = self
             .client
             .request(PutResource::new(href).create(data, content_type))
@@ -116,8 +139,15 @@ where
         Ok(response.collections)
     }
 
-    async fn get_property(&self, href: &str, property: &libdav::PropertyName<'_, '_>) -> Result<Option<String>> {
-        let response = self.client.request(GetProperty::new(href, property)).await?;
+    async fn get_property(
+        &self,
+        href: &str,
+        property: &libdav::PropertyName<'_, '_>,
+    ) -> Result<Option<String>> {
+        let response = self
+            .client
+            .request(GetProperty::new(href, property))
+            .await?;
         Ok(response.value)
     }
 
@@ -378,11 +408,19 @@ mod tests {
         let base_url = "https://dav.fastmail.com";
 
         assert_eq!(
-            format!("{}{}", base_url, DavService::Calendars.base_path(account_id)),
+            format!(
+                "{}{}",
+                base_url,
+                DavService::Calendars.base_path(account_id)
+            ),
             "https://dav.fastmail.com/dav/calendars/user/testuser/"
         );
         assert_eq!(
-            format!("{}{}", base_url, DavService::AddressBooks.base_path(account_id)),
+            format!(
+                "{}{}",
+                base_url,
+                DavService::AddressBooks.base_path(account_id)
+            ),
             "https://dav.fastmail.com/dav/addressbooks/user/testuser/"
         );
         assert_eq!(

@@ -22,7 +22,7 @@ impl FastmailClient {
         let session = Self::fetch_session(&http_client).await?;
 
         // Get account email from session first (before moving session)
-        let account_email = Self::get_primary_account_email(&session).await?;
+        let account_email = Self::get_primary_account_email(&session)?;
 
         // Parse account ID from session
         let account_id = Self::select_account_id(&session)?;
@@ -47,10 +47,28 @@ impl FastmailClient {
         Ok(session)
     }
 
-    async fn get_primary_account_email(_session: &Session) -> Result<String> {
-        // For now, return a placeholder. In real implementation, we'd parse
-        // the account data more carefully to get the actual email.
-        Ok("user@fastmail.com".to_string())
+    fn get_primary_account_email(session: &Session) -> Result<String> {
+        if let Some(username) = &session.username {
+            if username.contains('@') {
+                return Ok(username.clone());
+            }
+        }
+
+        let account_id = Self::select_account_id(session)?;
+
+        if let Some(account) = session.accounts.get(&account_id) {
+            if let Some(name) = &account.name {
+                if name.contains('@') {
+                    return Ok(name.clone());
+                }
+            }
+        }
+
+        if account_id.contains('@') {
+            return Ok(account_id);
+        }
+
+        Err(anyhow!("Could not determine account email from session"))
     }
 
     fn select_account_id(session: &Session) -> Result<String> {
@@ -88,7 +106,9 @@ impl FastmailClient {
         let ids = match mailbox {
             Some(name) => {
                 let mailbox_id = self.resolve_mailbox_id(name).await?;
-                self.inner.email_query_in_mailbox(&mailbox_id, limit).await?
+                self.inner
+                    .email_query_in_mailbox(&mailbox_id, limit)
+                    .await?
             }
             None => self.inner.email_query(limit).await?,
         };
@@ -105,51 +125,52 @@ impl FastmailClient {
         let email = self.inner.get_email(id).await?;
 
         // Download the body content using RFC 8620 downloadUrl if available
-        let body_values = if self.session.download_url.is_none() && self.session.upload_url.is_none() {
-            None
-        } else {
-            let mut body_obj = serde_json::Map::new();
-
-            // Download HTML body parts
-            if let Some(html_body) = &email.html_body {
-                for part in html_body {
-                    if let Some(blob_id) = &part.blob_id {
-                        let url = self.construct_download_url(blob_id, &part.type_);
-                        let content = self.inner.download_blob(&url).await?;
-
-                        let value_obj = json!({
-                            "value": content,
-                            "isEncodingProblem": false,
-                            "isTruncated": false
-                        });
-                        body_obj.insert(part.part_id.clone(), value_obj);
-                    }
-                }
-            }
-
-            // Download text body parts
-            if let Some(text_body) = &email.text_body {
-                for part in text_body {
-                    if let Some(blob_id) = &part.blob_id {
-                        let url = self.construct_download_url(blob_id, &part.type_);
-                        let content = self.inner.download_blob(&url).await?;
-
-                        let value_obj = json!({
-                            "value": content,
-                            "isEncodingProblem": false,
-                            "isTruncated": false
-                        });
-                        body_obj.insert(part.part_id.clone(), value_obj);
-                    }
-                }
-            }
-
-            if body_obj.is_empty() {
+        let body_values =
+            if self.session.download_url.is_none() && self.session.upload_url.is_none() {
                 None
             } else {
-                Some(serde_json::Value::Object(body_obj))
-            }
-        };
+                let mut body_obj = serde_json::Map::new();
+
+                // Download HTML body parts
+                if let Some(html_body) = &email.html_body {
+                    for part in html_body {
+                        if let Some(blob_id) = &part.blob_id {
+                            let url = self.construct_download_url(blob_id, &part.type_);
+                            let content = self.inner.download_blob(&url).await?;
+
+                            let value_obj = json!({
+                                "value": content,
+                                "isEncodingProblem": false,
+                                "isTruncated": false
+                            });
+                            body_obj.insert(part.part_id.clone(), value_obj);
+                        }
+                    }
+                }
+
+                // Download text body parts
+                if let Some(text_body) = &email.text_body {
+                    for part in text_body {
+                        if let Some(blob_id) = &part.blob_id {
+                            let url = self.construct_download_url(blob_id, &part.type_);
+                            let content = self.inner.download_blob(&url).await?;
+
+                            let value_obj = json!({
+                                "value": content,
+                                "isEncodingProblem": false,
+                                "isTruncated": false
+                            });
+                            body_obj.insert(part.part_id.clone(), value_obj);
+                        }
+                    }
+                }
+
+                if body_obj.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::Value::Object(body_obj))
+                }
+            };
 
         Ok(Email {
             body_values,
@@ -179,7 +200,10 @@ impl FastmailClient {
     /// Upload binary data using RFC 8620 uploadUrl
     /// Returns the blobId
     pub async fn upload_blob(&self, data: &[u8], type_: &str) -> Result<String> {
-        let upload_url = self.session.upload_url.as_ref()
+        let upload_url = self
+            .session
+            .upload_url
+            .as_ref()
             .ok_or_else(|| anyhow!("No uploadUrl in session"))?;
 
         let url = upload_url.replace("{accountId}", self.inner.account_id());
@@ -190,7 +214,8 @@ impl FastmailClient {
         // Parse response to get blobId
         // Format: { "blobId": "xxx", "size": yyy }
         let resp: serde_json::Value = serde_json::from_slice(&resp_bytes)?;
-        let blob_id = resp.get("blobId")
+        let blob_id = resp
+            .get("blobId")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("No blobId in upload response"))?;
 
@@ -198,12 +223,14 @@ impl FastmailClient {
     }
 
     /// Download a blob using RFC 8620 downloadUrl (private helper)
+    #[allow(dead_code)]
     async fn download_blob(&self, blob_id: &str, type_: &str) -> Result<String> {
         let url = self.construct_download_url(blob_id, type_);
         self.inner.download_blob(&url).await
     }
 
     /// Download a blob as bytes using RFC 8620 downloadUrl (private helper)
+    #[allow(dead_code)]
     async fn download_blob_bytes(&self, blob_id: &str, type_: &str) -> Result<Vec<u8>> {
         let url = self.construct_download_url(blob_id, type_);
         self.inner.download_blob_bytes(&url).await
@@ -272,11 +299,7 @@ impl FastmailClient {
         Ok(email)
     }
 
-    pub async fn set_masked_email_state(
-        &self,
-        id: &str,
-        state: MaskedEmailState,
-    ) -> Result<()> {
+    pub async fn set_masked_email_state(&self, id: &str, state: MaskedEmailState) -> Result<()> {
         self.inner
             .call_method_with_using(
                 &[JMAP_CORE_CAPABILITY, FASTMAIL_MASKED_EMAIL_CAPABILITY],
@@ -393,7 +416,9 @@ impl FastmailClient {
         filter: Option<jmap_client::PrincipalFilterCondition>,
         limit: Option<usize>,
     ) -> Result<Vec<jmap_client::Principal>> {
-        self.inner.principal_query_and_get(filter, None, limit).await
+        self.inner
+            .principal_query_and_get(filter, None, limit)
+            .await
     }
 
     /// Get a specific Principal by ID
@@ -411,7 +436,9 @@ impl FastmailClient {
         filter: Option<jmap_client::ShareNotificationFilterCondition>,
         limit: Option<usize>,
     ) -> Result<Vec<jmap_client::ShareNotification>> {
-        self.inner.share_notification_query_and_get(filter, None, limit).await
+        self.inner
+            .share_notification_query_and_get(filter, None, limit)
+            .await
     }
 
     /// Dismiss ShareNotifications
@@ -426,6 +453,9 @@ mod tests {
 
     #[test]
     fn test_fastmail_session_url() {
-        assert_eq!(FASTMAIL_SESSION_URL, "https://api.fastmail.com/jmap/session");
+        assert_eq!(
+            FASTMAIL_SESSION_URL,
+            "https://api.fastmail.com/jmap/session"
+        );
     }
 }

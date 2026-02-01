@@ -87,7 +87,12 @@ pub async fn handle_blob_command(
         BlobCommands::Info { blob_id } => {
             let results = client
                 .jmap_client()
-                .blob_get(&[blob_id.clone()], Some(vec!["size".to_string()]), None, None)
+                .blob_get(
+                    std::slice::from_ref(&blob_id),
+                    Some(vec!["size".to_string()]),
+                    None,
+                    None,
+                )
                 .await?;
 
             if let Some(info) = results.first() {
@@ -99,9 +104,10 @@ pub async fn handle_blob_command(
                 }));
                 print_response(&resp)?;
             } else {
-                let resp = Response::<()>::error(ErrorResponse::not_found(
-                    format!("Blob not found: {}", blob_id)
-                ));
+                let resp = Response::<()>::error(ErrorResponse::not_found(format!(
+                    "Blob not found: {}",
+                    blob_id
+                )));
                 print_response(&resp)?;
             }
             Ok(())
@@ -109,7 +115,7 @@ pub async fn handle_blob_command(
         BlobCommands::Lookup { blob_id, types } => {
             let results = client
                 .jmap_client()
-                .blob_lookup(&[blob_id.clone()], &types)
+                .blob_lookup(std::slice::from_ref(&blob_id), &types)
                 .await?;
 
             if let Some(info) = results.first() {
@@ -119,9 +125,10 @@ pub async fn handle_blob_command(
                 }));
                 print_response(&resp)?;
             } else {
-                let resp = Response::<()>::error(ErrorResponse::not_found(
-                    format!("Blob not found: {}", blob_id)
-                ));
+                let resp = Response::<()>::error(ErrorResponse::not_found(format!(
+                    "Blob not found: {}",
+                    blob_id
+                )));
                 print_response(&resp)?;
             }
             Ok(())
