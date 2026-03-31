@@ -38,6 +38,93 @@ pub struct MethodError {
     pub description: Option<String>,
 }
 
+/// Structured JMAP error type (RFC 8620 §3.6.2)
+#[derive(Debug, Clone, Error)]
+pub enum JmapError {
+    // RFC 8620 §3.6.2 request-level errors
+    #[error("unknown capability: {0}")]
+    UnknownCapability(String),
+
+    #[error("not JSON: {0}")]
+    NotJson(String),
+
+    #[error("not request: {0}")]
+    NotRequest(String),
+
+    #[error("limit exceeded: {0}")]
+    Limit(String),
+
+    // RFC 8620 §3.6.2 method-level errors
+    #[error("server unavailable")]
+    ServerUnavailable,
+
+    #[error("server fail: {description:?}")]
+    ServerFail { description: Option<String> },
+
+    #[error("server partial fail")]
+    ServerPartialFail,
+
+    #[error("unknown method: {0}")]
+    UnknownMethod(String),
+
+    #[error("invalid arguments: {description:?}")]
+    InvalidArguments { description: Option<String> },
+
+    #[error("invalid result reference")]
+    InvalidResultReference,
+
+    #[error("forbidden")]
+    Forbidden,
+
+    #[error("account not found: {0}")]
+    AccountNotFound(String),
+
+    #[error("account not supported by method")]
+    AccountNotSupportedByMethod,
+
+    #[error("account read only")]
+    AccountReadOnly,
+
+    // Catch-all for unknown error types
+    #[error("JMAP error {type_}: {description:?}")]
+    Unknown {
+        type_: String,
+        description: Option<String>,
+    },
+}
+
+impl JmapError {
+    /// Parse a JMAP error response (the args field of an error invocation) into a typed variant.
+    pub fn from_value(args: &serde_json::Value) -> Self {
+        let type_ = args
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let description = args.get("description").and_then(|v| v.as_str()).map(String::from);
+
+        match type_ {
+            error_types::UNKNOWN_CAPABILITY => Self::UnknownCapability(description.unwrap_or_default()),
+            error_types::NOT_JSON => Self::NotJson(description.unwrap_or_default()),
+            error_types::NOT_REQUEST => Self::NotRequest(description.unwrap_or_default()),
+            error_types::LIMIT => Self::Limit(description.unwrap_or_default()),
+            error_types::SERVER_UNAVAILABLE => Self::ServerUnavailable,
+            error_types::SERVER_FAIL => Self::ServerFail { description },
+            error_types::SERVER_PARTIAL_FAIL => Self::ServerPartialFail,
+            error_types::UNKNOWN_METHOD => Self::UnknownMethod(description.unwrap_or_default()),
+            error_types::INVALID_ARGUMENTS => Self::InvalidArguments { description },
+            error_types::INVALID_RESULT_REFERENCE => Self::InvalidResultReference,
+            error_types::FORBIDDEN => Self::Forbidden,
+            error_types::ACCOUNT_NOT_FOUND => Self::AccountNotFound(description.unwrap_or_default()),
+            error_types::ACCOUNT_NOT_SUPPORTED_BY_METHOD => Self::AccountNotSupportedByMethod,
+            error_types::ACCOUNT_READ_ONLY => Self::AccountReadOnly,
+            _ => Self::Unknown {
+                type_: type_.to_string(),
+                description,
+            },
+        }
+    }
+}
+
 /// Common JMAP error types
 pub mod error_types {
     pub const UNKNOWN_CAPABILITY: &str = "urn:ietf:params:jmap:error:unknownCapability";

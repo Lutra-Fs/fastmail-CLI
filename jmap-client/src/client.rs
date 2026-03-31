@@ -1,5 +1,6 @@
 // jmap-client/src/client.rs
 use crate::blob;
+use crate::error::JmapError;
 use crate::http::HttpClient;
 use crate::types::{
     BlobCopyResponse, BlobGetResponse, BlobLookupInfo, BlobUploadObject, BlobUploadResponse,
@@ -246,7 +247,8 @@ impl<C: HttpClient> JmapClient<C> {
             .ok_or_else(|| anyhow::anyhow!("Empty JMAP response"))?;
 
         if first.name == "error" {
-            anyhow::bail!("JMAP error: {}", first.args);
+            let jmap_err = JmapError::from_value(&first.args);
+            return Err(anyhow!(jmap_err));
         }
 
         if first.name != method {

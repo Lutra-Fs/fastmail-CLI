@@ -7,7 +7,7 @@ pub mod types;
 
 pub use blob::{data_source_from_bytes, data_source_from_text, decode_base64, encode_base64};
 pub use client::JmapClient;
-pub use error::BlobError;
+pub use error::{BlobError, JmapError};
 pub use http::{HttpClient, HttpError};
 pub use types::{
     AccountData,
