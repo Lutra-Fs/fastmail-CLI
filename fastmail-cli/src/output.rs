@@ -248,4 +248,98 @@ mod tests {
         let result = format_output(&data, OutputFormat::Human);
         assert_eq!(result, "Message: hello");
     }
+
+    #[test]
+    fn test_response_ok_serialization() {
+        let resp = Response::ok(vec!["a".to_string(), "b".to_string()]);
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"ok\":true"));
+        assert!(json.contains("\"result\""));
+    }
+
+    #[test]
+    fn test_response_ok_with_meta_serialization() {
+        let meta = Meta {
+            rate_limit: Some(RateLimitInfo {
+                remaining: 42,
+                reset_at: "2025-01-01T00:00:00Z".to_string(),
+            }),
+            dry_run: Some(true),
+            operation_id: Some("op-123".to_string()),
+        };
+        let resp = Response::ok_with_meta(vec!["x".to_string()], meta);
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"ok\":true"));
+        assert!(json.contains("\"rate_limit\""));
+        assert!(json.contains("\"dry_run\":true"));
+        assert!(json.contains("\"operation_id\":\"op-123\""));
+    }
+
+    #[test]
+    fn test_response_error_serialization() {
+        let resp = Response::<()>::error(ErrorResponse::safety_rejected("test".to_string()));
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(json.contains("\"ok\":false"));
+        assert!(json.contains("safety_rejected"));
+        assert!(json.contains("\"retryable\":false"));
+    }
+
+    #[test]
+    fn test_response_error_skips_null_fields() {
+        let resp = Response::<()>::error(ErrorResponse::not_found("gone".to_string()));
+        let json = serde_json::to_string(&resp).unwrap();
+        // result and meta should be absent, not null
+        assert!(!json.contains("\"result\""));
+        assert!(!json.contains("\"meta\""));
+        assert!(!json.contains("\"retry_after\""));
+    }
+
+    #[test]
+    fn test_error_response_safety_rejected() {
+        let err = ErrorResponse::safety_rejected("bad command".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"type\":\"safety_rejected\""));
+        assert!(json.contains("\"message\":\"bad command\""));
+        assert!(json.contains("\"retryable\":false"));
+    }
+
+    #[test]
+    fn test_error_response_not_found() {
+        let err = ErrorResponse::not_found("no mailbox".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"type\":\"not_found\""));
+    }
+
+    #[test]
+    fn test_error_response_validation_failed() {
+        let err = ErrorResponse::validation_failed("bad input".to_string());
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"type\":\"validation_failed\""));
+    }
+
+    #[test]
+    fn test_error_response_rate_limited() {
+        let err = ErrorResponse::rate_limited(30);
+        let json = serde_json::to_string(&err).unwrap();
+        assert!(json.contains("\"type\":\"rate_limited\""));
+        assert!(json.contains("\"retryable\":true"));
+        assert!(json.contains("\"retry_after\":30"));
+        assert!(json.contains("30s"));
+    }
+
+    #[test]
+    fn test_exit_codes() {
+        assert_eq!(ExitCode::Success.code(), 0);
+        assert_eq!(ExitCode::TransientError.code(), 1);
+        assert_eq!(ExitCode::PermanentError.code(), 2);
+        assert_eq!(ExitCode::SafetyRejected.code(), 3);
+    }
+
+    #[test]
+    fn test_exit_code_display() {
+        assert_eq!(ExitCode::Success.to_string(), "success");
+        assert_eq!(ExitCode::TransientError.to_string(), "transient_error");
+        assert_eq!(ExitCode::PermanentError.to_string(), "permanent_error");
+        assert_eq!(ExitCode::SafetyRejected.to_string(), "safety_rejected");
+    }
 }
