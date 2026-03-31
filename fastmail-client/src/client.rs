@@ -184,9 +184,37 @@ impl FastmailClient {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
-    /// Get access to inner JmapClient for direct Blob operations
-    pub fn jmap_client(&self) -> &JmapClient<ReqwestClient> {
-        &self.inner
+    // Blob operations (RFC 9404) - forwarding methods to JmapClient
+
+    /// Upload binary data as a blob
+    /// Returns the blobId
+    pub async fn blob_upload_bytes(&self, bytes: &[u8], type_: Option<&str>) -> Result<String> {
+        self.inner.blob_upload_bytes(bytes, type_).await
+    }
+
+    /// Get blob content as raw bytes
+    pub async fn blob_get_bytes(&self, id: &str) -> Result<Vec<u8>> {
+        self.inner.blob_get_bytes(id).await
+    }
+
+    /// Get blob metadata
+    pub async fn blob_get(
+        &self,
+        ids: &[String],
+        properties: Option<Vec<String>>,
+        offset: Option<u64>,
+        length: Option<u64>,
+    ) -> Result<Vec<jmap_client::BlobGetResponse>> {
+        self.inner.blob_get(ids, properties, offset, length).await
+    }
+
+    /// Look up references to a blob
+    pub async fn blob_lookup(
+        &self,
+        ids: &[String],
+        type_names: &[String],
+    ) -> Result<Vec<jmap_client::BlobLookupInfo>> {
+        self.inner.blob_lookup(ids, type_names).await
     }
 
     // Sharing capability methods (RFC 9670)

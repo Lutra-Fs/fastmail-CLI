@@ -62,7 +62,6 @@ pub async fn handle_blob_command(
         BlobCommands::Upload { path, type_ } => {
             let content = tokio::fs::read(&path).await?;
             let blob_id = client
-                .jmap_client()
                 .blob_upload_bytes(&content, type_.as_deref())
                 .await?;
 
@@ -74,7 +73,7 @@ pub async fn handle_blob_command(
             Ok(())
         }
         BlobCommands::Download { blob_id, output } => {
-            let data = client.jmap_client().blob_get_bytes(&blob_id).await?;
+            let data = client.blob_get_bytes(&blob_id).await?;
             tokio::fs::write(&output, data).await?;
 
             let resp = Response::ok(serde_json::json!({
@@ -86,7 +85,6 @@ pub async fn handle_blob_command(
         }
         BlobCommands::Info { blob_id } => {
             let results = client
-                .jmap_client()
                 .blob_get(
                     std::slice::from_ref(&blob_id),
                     Some(vec!["size".to_string()]),
@@ -114,7 +112,6 @@ pub async fn handle_blob_command(
         }
         BlobCommands::Lookup { blob_id, types } => {
             let results = client
-                .jmap_client()
                 .blob_lookup(std::slice::from_ref(&blob_id), &types)
                 .await?;
 
