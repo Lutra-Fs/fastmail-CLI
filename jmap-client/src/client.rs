@@ -164,6 +164,53 @@ impl<C: HttpClient> JmapClient<C> {
         self.http_get(url).await
     }
 
+    /// Download blob content using RFC 8620 downloadUrl template
+    /// Returns UTF-8 string (replaces invalid sequences)
+    pub async fn download_blob_content(&self, blob_id: &str, name: &str, type_: &str) -> Result<String> {
+        let template = self.session.download_url.as_ref()
+            .ok_or_else(|| anyhow!("Server does not support downloadUrl"))?;
+        let url = template
+            .replace("{accountId}", &self.account_id)
+            .replace("{blobId}", blob_id)
+            .replace("{name}", name)
+            .replace("{type}", type_);
+        let bytes = self.http_get(&url).await?;
+        Ok(String::from_utf8_lossy(&bytes).to_string())
+    }
+
+    /// Download blob content as raw bytes using RFC 8620 downloadUrl template
+    pub async fn download_blob_content_bytes(&self, blob_id: &str, name: &str, type_: &str) -> Result<Vec<u8>> {
+        let template = self.session.download_url.as_ref()
+            .ok_or_else(|| anyhow!("Server does not support downloadUrl"))?;
+        let url = template
+            .replace("{accountId}", &self.account_id)
+            .replace("{blobId}", blob_id)
+            .replace("{name}", name)
+            .replace("{type}", type_);
+        self.http_get(&url).await
+    }
+
+    /// Upload blob content using RFC 8620 uploadUrl template
+    /// Returns the blobId from the server response
+    pub async fn upload_blob_content(&self, data: &[u8], content_type: &str) -> Result<String> {
+        let template = self.session.upload_url.as_ref()
+            .ok_or_else(|| anyhow!("Server does not support uploadUrl"))?;
+        let url = template.replace("{accountId}", &self.account_id);
+
+        // RFC 8620 says: POST with the file data as the body
+        let resp_bytes = self.http_post(&url, data.to_vec(), content_type).await?;
+
+        // Parse response to get blobId
+        // Format: { "blobId": "xxx", "size": yyy }
+        let resp: serde_json::Value = serde_json::from_slice(&resp_bytes)?;
+        let blob_id = resp
+            .get("blobId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("No blobId in upload response"))?;
+
+        Ok(blob_id.to_string())
+    }
+
     pub async fn call_method(
         &self,
         method: &str,
@@ -299,14 +346,69 @@ impl<C: HttpClient> JmapClient<C> {
     }
 
     /// Get a single email by ID with body values (fetches actual email body content)
+    /// Downloads body parts via RFC 8620 downloadUrl if bodyValues not already populated
     pub async fn get_email_with_body(&self, id: &str) -> Result<Email> {
         // First get the email to find out what body parts exist
         let email = self.get_email(id).await?;
 
-        // Note: Standard JMAP servers would populate bodyValues via Email/get
-        // This base implementation just returns the email without body values
-        // Subclasses like FastmailClient should override this to fetch via downloadUrl
-        Ok(email)
+        // If body values already populated, return as-is
+        if email.body_values.is_some() {
+            return Ok(email);
+        }
+
+        // Otherwise download body parts via downloadUrl if available
+        if self.session.download_url.is_none() {
+            return Ok(email);
+        }
+
+        let mut body_obj = serde_json::Map::new();
+
+        // Download HTML body parts
+        if let Some(html_body) = &email.html_body {
+            for part in html_body {
+                if let Some(blob_id) = &part.blob_id {
+                    let content = self
+                        .download_blob_content(
+                            blob_id,
+                            "email",
+                            &part.type_
+                        ).await?;
+                    body_obj.insert(part.part_id.clone(), json!({
+                        "value": content,
+                        "isEncodingProblem": false,
+                        "isTruncated": false
+                    }));
+                }
+            }
+        }
+
+        // Download text body parts
+        if let Some(text_body) = &email.text_body {
+            for part in text_body {
+                if let Some(blob_id) = &part.blob_id {
+                    let content = self
+                        .download_blob_content(
+                            blob_id,
+                            "email",
+                            &part.type_
+                        ).await?;
+                    body_obj.insert(part.part_id.clone(), json!({
+                        "value": content,
+                        "isEncodingProblem": false,
+                        "isTruncated": false
+                    }));
+                }
+            }
+        }
+
+        if body_obj.is_empty() {
+            Ok(email)
+        } else {
+            Ok(Email {
+                body_values: Some(serde_json::Value::Object(body_obj)),
+                ..email
+            })
+        }
     }
 
     /// Delete emails by IDs
