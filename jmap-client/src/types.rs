@@ -456,7 +456,7 @@ pub struct BodyPart {
 }
 
 /// JMAP Session response (RFC 8620 Section 2)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct Session {
     /// Server capabilities (required)
     pub capabilities: HashMap<String, serde_json::Value>,
@@ -486,7 +486,7 @@ pub struct Session {
     pub state: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AccountData {
     pub name: Option<String>,
     #[serde(rename = "isPersonal")]

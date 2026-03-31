@@ -1,7 +1,7 @@
 // fastmail-client/src/client.rs
 use crate::masked_email::{MaskedEmail, MaskedEmailState};
 use anyhow::{anyhow, Result};
-use jmap_client::{Email, HttpClient, JmapClient, Mailbox, ReqwestClient, Session};
+use jmap_client::{Email, JmapClient, Mailbox, ReqwestClient};
 use serde_json::json;
 
 const FASTMAIL_SESSION_URL: &str = "https://api.fastmail.com/jmap/session";
@@ -11,85 +11,19 @@ const JMAP_CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
 pub struct FastmailClient {
     inner: JmapClient<ReqwestClient>,
     account_email: String,
-    session: Session,
 }
 
 impl FastmailClient {
     pub async fn new(token: String) -> Result<Self> {
-        let http_client = ReqwestClient::new().with_token(token.clone());
+        let inner = JmapClient::connect(FASTMAIL_SESSION_URL, token).await?;
 
-        // Fetch session from Fastmail
-        let session = Self::fetch_session(&http_client).await?;
-
-        // Get account email from session first (before moving session)
-        let account_email = Self::get_primary_account_email(&session)?;
-
-        // Parse account ID from session
-        let account_id = Self::select_account_id(&session)?;
-
-        let inner = JmapClient::new(http_client, session.api_url.clone(), account_id);
+        // Get account email from session
+        let account_email = inner.account_email().unwrap_or_default().to_string();
 
         Ok(Self {
             inner,
             account_email,
-            session,
         })
-    }
-
-    async fn fetch_session(http: &ReqwestClient) -> Result<Session> {
-        let body = b"";
-        let resp_bytes = http
-            .get(FASTMAIL_SESSION_URL, body.to_vec())
-            .await
-            .map_err(|e| anyhow!("Failed to fetch session: {}", e.message))?;
-
-        let session: Session = serde_json::from_slice(&resp_bytes)?;
-        Ok(session)
-    }
-
-    fn get_primary_account_email(session: &Session) -> Result<String> {
-        if let Some(username) = &session.username {
-            if username.contains('@') {
-                return Ok(username.clone());
-            }
-        }
-
-        let account_id = Self::select_account_id(session)?;
-
-        if let Some(account) = session.accounts.get(&account_id) {
-            if let Some(name) = &account.name {
-                if name.contains('@') {
-                    return Ok(name.clone());
-                }
-            }
-        }
-
-        if account_id.contains('@') {
-            return Ok(account_id);
-        }
-
-        Err(anyhow!("Could not determine account email from session"))
-    }
-
-    fn select_account_id(session: &Session) -> Result<String> {
-        if session.accounts.is_empty() {
-            return Err(anyhow!("No account in session"));
-        }
-
-        if let Some((id, _)) = session
-            .accounts
-            .iter()
-            .find(|(_, data)| data.is_personal.unwrap_or(false))
-        {
-            return Ok(id.clone());
-        }
-
-        let (id, _) = session
-            .accounts
-            .iter()
-            .next()
-            .ok_or_else(|| anyhow!("No account in session"))?;
-        Ok(id.clone())
     }
 
     pub fn account_id(&self) -> &str {
@@ -126,7 +60,7 @@ impl FastmailClient {
 
         // Download the body content using RFC 8620 downloadUrl if available
         let body_values =
-            if self.session.download_url.is_none() && self.session.upload_url.is_none() {
+            if self.inner.download_url().is_none() && self.inner.upload_url().is_none() {
                 None
             } else {
                 let mut body_obj = serde_json::Map::new();
@@ -180,7 +114,7 @@ impl FastmailClient {
 
     /// Construct download URL from RFC 8620 downloadUrl template
     fn construct_download_url(&self, blob_id: &str, type_: &str) -> String {
-        if let Some(download_url) = &self.session.download_url {
+        if let Some(download_url) = self.inner.download_url() {
             download_url
                 .replace("{accountId}", self.inner.account_id())
                 .replace("{blobId}", blob_id)
@@ -201,9 +135,8 @@ impl FastmailClient {
     /// Returns the blobId
     pub async fn upload_blob(&self, data: &[u8], type_: &str) -> Result<String> {
         let upload_url = self
-            .session
-            .upload_url
-            .as_ref()
+            .inner
+            .upload_url()
             .ok_or_else(|| anyhow!("No uploadUrl in session"))?;
 
         let url = upload_url.replace("{accountId}", self.inner.account_id());
@@ -343,17 +276,12 @@ impl FastmailClient {
 
     /// Check if server supports Blob capability
     pub fn has_blob_capability(&self) -> bool {
-        self.session
-            .accounts
-            .get(self.inner.account_id())
-            .and_then(|acc| acc.account_capabilities.as_ref())
-            .and_then(|caps| caps.get("urn:ietf:params:jmap:blob"))
-            .is_some()
+        self.inner.has_capability("urn:ietf:params:jmap:blob")
     }
 
     /// Get Blob capability details if available
     pub fn blob_capability(&self) -> Option<jmap_client::BlobCapability> {
-        self.session
+        self.inner.session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -370,17 +298,12 @@ impl FastmailClient {
 
     /// Check if server supports Principals capability
     pub fn has_principals_capability(&self) -> bool {
-        self.session
-            .accounts
-            .get(self.inner.account_id())
-            .and_then(|acc| acc.account_capabilities.as_ref())
-            .and_then(|caps| caps.get("urn:ietf:params:jmap:principals"))
-            .is_some()
+        self.inner.has_capability("urn:ietf:params:jmap:principals")
     }
 
     /// Get Principals capability details if available
     pub fn principals_capability(&self) -> Option<jmap_client::PrincipalsAccountCapability> {
-        self.session
+        self.inner.session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -390,7 +313,7 @@ impl FastmailClient {
 
     /// Get owner capability (for finding principal account)
     pub fn owner_capability(&self) -> Option<jmap_client::PrincipalsOwnerCapability> {
-        self.session
+        self.inner.session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -400,7 +323,7 @@ impl FastmailClient {
 
     /// Get current user's Principal ID
     pub fn current_principal_id(&self) -> Option<String> {
-        self.session
+        self.inner.session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())

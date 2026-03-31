@@ -5,10 +5,10 @@ use crate::types::{
     BlobCopyResponse, BlobGetResponse, BlobLookupInfo, BlobUploadObject, BlobUploadResponse,
     ChangesResponse, Email, EmailCreate, EmailImport, EmailSubmission, Envelope, Identity,
     Mailbox, Principal, PrincipalFilterCondition, PushSubscription, QueryChangesResponse,
-    SearchSnippet, ShareNotification, ShareNotificationFilterCondition, Thread,
+    SearchSnippet, Session, ShareNotification, ShareNotificationFilterCondition, Thread,
     VacationResponse,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use serde_json::json;
 
 const CORE_CAPABILITY: &str = "urn:ietf:params:jmap:core";
@@ -27,21 +27,113 @@ pub struct Invocation {
 
 pub struct JmapClient<C: HttpClient> {
     http: C,
-    api_url: String,
+    session: Session,
     account_id: String,
 }
 
 impl<C: HttpClient> JmapClient<C> {
+    /// Create a new JmapClient with an existing session.
+    /// This constructor is primarily for testing with mock HTTP clients.
+    #[deprecated(since = "0.2.0", note = "Use JmapClient::connect() for production code")]
     pub fn new(http: C, api_url: String, account_id: String) -> Self {
+        // Create a minimal session for backward compatibility
+        let session = Session {
+            capabilities: std::collections::HashMap::new(),
+            api_url,
+            download_url: None,
+            upload_url: None,
+            event_source_url: None,
+            accounts: std::collections::HashMap::new(),
+            primary_accounts: std::collections::HashMap::new(),
+            username: None,
+            state: None,
+        };
         Self {
             http,
-            api_url,
+            session,
             account_id,
         }
     }
 
+    /// Fetch session and select account ID from a session URL (generic JMAP logic)
+    pub async fn fetch_session(http: &C, session_url: &str) -> Result<Session> {
+        let body: Vec<u8> = vec![];
+        let resp_bytes = http
+            .get(session_url, body)
+            .await
+            .map_err(|e| anyhow!("Failed to fetch session: {}", e.message))?;
+        let session: Session = serde_json::from_slice(&resp_bytes)?;
+        Ok(session)
+    }
+
+    /// Select the primary account ID from a session (generic JMAP logic)
+    pub fn select_account_id(session: &Session) -> Result<String> {
+        if session.accounts.is_empty() {
+            return Err(anyhow!("No account in session"));
+        }
+
+        // Prefer personal account
+        if let Some((id, _)) = session
+            .accounts
+            .iter()
+            .find(|(_, data)| data.is_personal.unwrap_or(false))
+        {
+            return Ok(id.clone());
+        }
+
+        // Fall back to first account
+        let (id, _) = session
+            .accounts
+            .iter()
+            .next()
+            .ok_or_else(|| anyhow!("No account in session"))?;
+        Ok(id.clone())
+    }
+
     pub fn account_id(&self) -> &str {
         &self.account_id
+    }
+
+    /// Get the account email from session (tries username first, then account name)
+    pub fn account_email(&self) -> Option<&str> {
+        // Try username first
+        self.session
+            .username
+            .as_deref()
+            .filter(|s| s.contains('@'))
+            .or_else(|| {
+                // Then try account name
+                self.session
+                    .accounts
+                    .get(&self.account_id)
+                    .and_then(|a| a.name.as_deref())
+                    .filter(|s| s.contains('@'))
+            })
+    }
+
+    /// Get a reference to the session
+    pub fn session(&self) -> &Session {
+        &self.session
+    }
+
+    /// Check if the account has a specific capability
+    pub fn has_capability(&self, cap: &str) -> bool {
+        self.session
+            .accounts
+            .get(&self.account_id)
+            .and_then(|acc| acc.account_capabilities.as_ref())
+            .and_then(|caps| caps.get(cap))
+            .is_some()
+    }
+
+    /// Get the download URL template from session
+    pub fn download_url(&self) -> Option<&str> {
+        self.session.download_url.as_deref()
+    }
+
+    /// Get the upload URL template from session
+    pub fn upload_url(&self) -> Option<&str> {
+        self.session.upload_url.as_deref()
     }
 
     /// Perform a raw HTTP GET request (for RFC 8620 downloadUrl)
@@ -58,17 +150,6 @@ impl<C: HttpClient> JmapClient<C> {
             .post_binary(url, data, content_type)
             .await
             .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))
-    }
-
-    /// Upload binary data using RFC 8620 uploadUrl
-    /// Returns the blobId
-    pub async fn upload_blob(&self, _data: &[u8], _type_: &str) -> Result<String> {
-        // This would require upload_url from Session, which we don't have here
-        // For now, this is a placeholder - the actual implementation should be in the client
-        // that has access to the Session object
-        Err(anyhow::anyhow!(
-            "upload_blob requires Session upload_url - implement in client layer"
-        ))
     }
 
     /// Download binary data using RFC 8620 downloadUrl
@@ -106,7 +187,7 @@ impl<C: HttpClient> JmapClient<C> {
         let body_bytes = serde_json::to_vec(&body)?;
         let resp_bytes = self
             .http
-            .post_json(&self.api_url, body_bytes)
+            .post_json(&self.session.api_url, body_bytes)
             .await
             .map_err(|e| anyhow::anyhow!("HTTP error: {}", e.message))?;
 
@@ -428,6 +509,24 @@ impl<C: HttpClient> JmapClient<C> {
             .collect()
     }
 
+    /// Get a single mailbox by ID
+    pub async fn mailbox_get(&self, id: &str) -> Result<Mailbox> {
+        let params = json!({
+            "accountId": self.account_id,
+            "ids": [id],
+        });
+
+        let args = self.call_method("Mailbox/get", params).await?;
+
+        let mailbox = args
+            .get("list")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .ok_or_else(|| anyhow::anyhow!("Mailbox not found: {}", id))?;
+
+        serde_json::from_value(mailbox.clone()).map_err(Into::into)
+    }
+
     /// Create a mailbox
     pub async fn mailbox_create(&self, name: &str) -> Result<Mailbox> {
         let params = json!({
@@ -448,7 +547,7 @@ impl<C: HttpClient> JmapClient<C> {
             }
         }
 
-        // Get the created mailbox - extract just the id since Fastmail doesn't return name
+        // Get the created mailbox ID
         let id = args
             .get("created")
             .and_then(|c| c.get("new"))
@@ -456,19 +555,8 @@ impl<C: HttpClient> JmapClient<C> {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("No created mailbox in response"))?;
 
-        Ok(Mailbox {
-            id: id.to_string(),
-            name: name.to_string(),
-            parent_id: None,
-            role: None,
-            sort_order: 0,
-            total_emails: 0,
-            unread_emails: 0,
-            total_threads: 0,
-            unread_threads: 0,
-            my_rights: None,
-            is_subscribed: false,
-        })
+        // Fetch the actual mailbox data from the server
+        self.mailbox_get(id).await
     }
 
     /// Delete a mailbox by ID
@@ -1378,6 +1466,21 @@ impl<C: HttpClient> JmapClient<C> {
         let using = [CORE_CAPABILITY];
         self.call_method_with_using(&using, "PushSubscription/set", params)
             .await
+    }
+}
+
+#[cfg(feature = "reqwest")]
+impl JmapClient<crate::http::ReqwestClient> {
+    /// Connect to a JMAP server by fetching the session and initializing the client.
+    pub async fn connect(session_url: &str, token: String) -> Result<Self> {
+        let http = crate::http::ReqwestClient::new().with_token(token);
+        let session = Self::fetch_session(&http, session_url).await?;
+        let account_id = Self::select_account_id(&session)?;
+        Ok(Self {
+            http,
+            session,
+            account_id,
+        })
     }
 }
 
