@@ -4,10 +4,9 @@ use crate::error::JmapError;
 use crate::http::HttpClient;
 use crate::types::{
     BlobCopyResponse, BlobGetResponse, BlobLookupInfo, BlobUploadObject, BlobUploadResponse,
-    ChangesResponse, Email, EmailCreate, EmailImport, EmailSubmission, Envelope, Identity,
-    Mailbox, Principal, PrincipalFilterCondition, PushSubscription, QueryChangesResponse,
-    SearchSnippet, Session, ShareNotification, ShareNotificationFilterCondition, Thread,
-    VacationResponse,
+    ChangesResponse, Email, EmailCreate, EmailImport, EmailSubmission, Envelope, Identity, Mailbox,
+    Principal, PrincipalFilterCondition, PushSubscription, QueryChangesResponse, SearchSnippet,
+    Session, ShareNotification, ShareNotificationFilterCondition, Thread, VacationResponse,
 };
 use anyhow::{anyhow, Result};
 use serde_json::json;
@@ -35,7 +34,10 @@ pub struct JmapClient<C: HttpClient> {
 impl<C: HttpClient> JmapClient<C> {
     /// Create a new JmapClient with an existing session.
     /// This constructor is primarily for testing with mock HTTP clients.
-    #[deprecated(since = "0.2.0", note = "Use JmapClient::connect() for production code")]
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use JmapClient::connect() for production code"
+    )]
     pub fn new(http: C, api_url: String, account_id: String) -> Self {
         // Create a minimal session for backward compatibility
         let session = Session {
@@ -167,8 +169,16 @@ impl<C: HttpClient> JmapClient<C> {
 
     /// Download blob content using RFC 8620 downloadUrl template
     /// Returns UTF-8 string (replaces invalid sequences)
-    pub async fn download_blob_content(&self, blob_id: &str, name: &str, type_: &str) -> Result<String> {
-        let template = self.session.download_url.as_ref()
+    pub async fn download_blob_content(
+        &self,
+        blob_id: &str,
+        name: &str,
+        type_: &str,
+    ) -> Result<String> {
+        let template = self
+            .session
+            .download_url
+            .as_ref()
             .ok_or_else(|| anyhow!("Server does not support downloadUrl"))?;
         let url = template
             .replace("{accountId}", &self.account_id)
@@ -180,8 +190,16 @@ impl<C: HttpClient> JmapClient<C> {
     }
 
     /// Download blob content as raw bytes using RFC 8620 downloadUrl template
-    pub async fn download_blob_content_bytes(&self, blob_id: &str, name: &str, type_: &str) -> Result<Vec<u8>> {
-        let template = self.session.download_url.as_ref()
+    pub async fn download_blob_content_bytes(
+        &self,
+        blob_id: &str,
+        name: &str,
+        type_: &str,
+    ) -> Result<Vec<u8>> {
+        let template = self
+            .session
+            .download_url
+            .as_ref()
             .ok_or_else(|| anyhow!("Server does not support downloadUrl"))?;
         let url = template
             .replace("{accountId}", &self.account_id)
@@ -194,7 +212,10 @@ impl<C: HttpClient> JmapClient<C> {
     /// Upload blob content using RFC 8620 uploadUrl template
     /// Returns the blobId from the server response
     pub async fn upload_blob_content(&self, data: &[u8], content_type: &str) -> Result<String> {
-        let template = self.session.upload_url.as_ref()
+        let template = self
+            .session
+            .upload_url
+            .as_ref()
             .ok_or_else(|| anyhow!("Server does not support uploadUrl"))?;
         let url = template.replace("{accountId}", &self.account_id);
 
@@ -370,16 +391,16 @@ impl<C: HttpClient> JmapClient<C> {
             for part in html_body {
                 if let Some(blob_id) = &part.blob_id {
                     let content = self
-                        .download_blob_content(
-                            blob_id,
-                            "email",
-                            &part.type_
-                        ).await?;
-                    body_obj.insert(part.part_id.clone(), json!({
-                        "value": content,
-                        "isEncodingProblem": false,
-                        "isTruncated": false
-                    }));
+                        .download_blob_content(blob_id, "email", &part.type_)
+                        .await?;
+                    body_obj.insert(
+                        part.part_id.clone(),
+                        json!({
+                            "value": content,
+                            "isEncodingProblem": false,
+                            "isTruncated": false
+                        }),
+                    );
                 }
             }
         }
@@ -389,16 +410,16 @@ impl<C: HttpClient> JmapClient<C> {
             for part in text_body {
                 if let Some(blob_id) = &part.blob_id {
                     let content = self
-                        .download_blob_content(
-                            blob_id,
-                            "email",
-                            &part.type_
-                        ).await?;
-                    body_obj.insert(part.part_id.clone(), json!({
-                        "value": content,
-                        "isEncodingProblem": false,
-                        "isTruncated": false
-                    }));
+                        .download_blob_content(blob_id, "email", &part.type_)
+                        .await?;
+                    body_obj.insert(
+                        part.part_id.clone(),
+                        json!({
+                            "value": content,
+                            "isEncodingProblem": false,
+                            "isTruncated": false
+                        }),
+                    );
                 }
             }
         }

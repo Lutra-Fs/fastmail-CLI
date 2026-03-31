@@ -61,9 +61,7 @@ pub async fn handle_blob_command(
         }
         BlobCommands::Upload { path, type_ } => {
             let content = tokio::fs::read(&path).await?;
-            let blob_id = client
-                .blob_upload_bytes(&content, type_.as_deref())
-                .await?;
+            let blob_id = client.blob_upload_bytes(&content, type_.as_deref()).await?;
 
             let resp = Response::ok(serde_json::json!({
                 "blobId": blob_id,

@@ -176,7 +176,8 @@ impl FastmailClient {
 
     /// Get Blob capability details if available
     pub fn blob_capability(&self) -> Option<jmap_client::BlobCapability> {
-        self.inner.session()
+        self.inner
+            .session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -226,7 +227,8 @@ impl FastmailClient {
 
     /// Get Principals capability details if available
     pub fn principals_capability(&self) -> Option<jmap_client::PrincipalsAccountCapability> {
-        self.inner.session()
+        self.inner
+            .session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -236,7 +238,8 @@ impl FastmailClient {
 
     /// Get owner capability (for finding principal account)
     pub fn owner_capability(&self) -> Option<jmap_client::PrincipalsOwnerCapability> {
-        self.inner.session()
+        self.inner
+            .session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())
@@ -246,7 +249,8 @@ impl FastmailClient {
 
     /// Get current user's Principal ID
     pub fn current_principal_id(&self) -> Option<String> {
-        self.inner.session()
+        self.inner
+            .session()
             .accounts
             .get(self.inner.account_id())
             .and_then(|acc| acc.account_capabilities.as_ref())

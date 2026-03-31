@@ -100,10 +100,15 @@ impl JmapError {
             .get("type")
             .and_then(|v| v.as_str())
             .unwrap_or("unknown");
-        let description = args.get("description").and_then(|v| v.as_str()).map(String::from);
+        let description = args
+            .get("description")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         match type_ {
-            error_types::UNKNOWN_CAPABILITY => Self::UnknownCapability(description.unwrap_or_default()),
+            error_types::UNKNOWN_CAPABILITY => {
+                Self::UnknownCapability(description.unwrap_or_default())
+            }
             error_types::NOT_JSON => Self::NotJson(description.unwrap_or_default()),
             error_types::NOT_REQUEST => Self::NotRequest(description.unwrap_or_default()),
             error_types::LIMIT => Self::Limit(description.unwrap_or_default()),
@@ -114,7 +119,9 @@ impl JmapError {
             error_types::INVALID_ARGUMENTS => Self::InvalidArguments { description },
             error_types::INVALID_RESULT_REFERENCE => Self::InvalidResultReference,
             error_types::FORBIDDEN => Self::Forbidden,
-            error_types::ACCOUNT_NOT_FOUND => Self::AccountNotFound(description.unwrap_or_default()),
+            error_types::ACCOUNT_NOT_FOUND => {
+                Self::AccountNotFound(description.unwrap_or_default())
+            }
             error_types::ACCOUNT_NOT_SUPPORTED_BY_METHOD => Self::AccountNotSupportedByMethod,
             error_types::ACCOUNT_READ_ONLY => Self::AccountReadOnly,
             _ => Self::Unknown {
