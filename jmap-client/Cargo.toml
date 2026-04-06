@@ -12,7 +12,7 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"], optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = "1.0"
+thiserror = "2.0"
 
 [features]
 default = ["reqwest"]
